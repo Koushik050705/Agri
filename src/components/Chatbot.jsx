@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, X, Send, Bot, User, ChevronDown, Mic, Loader2, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_CHAT_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
+const GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_CHAT_URL = `https://api.groq.com/openai/v1/chat/completions`;
 
 const AGRI_SYSTEM_PROMPT = `You are AgriBot, an expert AI agricultural assistant for Indian farmers built into the AgriVision platform.
 
@@ -22,30 +22,34 @@ Respond in the SAME LANGUAGE the user writes in (Hindi, Telugu, Tamil, etc.).
 Keep responses concise but complete. Use bullet points for lists.
 If asked about something completely unrelated to agriculture or the AgriVision platform, politely redirect to agricultural topics.`;
 
-async function askGemini(userMessage, history = []) {
-  const contents = [
-    { role: 'user', parts: [{ text: AGRI_SYSTEM_PROMPT }] },
-    { role: 'model', parts: [{ text: 'Understood! I am AgriBot, your agricultural AI assistant. I am ready to help with all your farming questions.' }] },
+async function askGroq(userMessage, history = []) {
+  const messages = [
+    { role: 'system', content: AGRI_SYSTEM_PROMPT },
     ...history,
-    { role: 'user', parts: [{ text: userMessage }] }
+    { role: 'user', content: userMessage }
   ];
 
-  const res = await fetch(GEMINI_CHAT_URL, {
+  const res = await fetch(GROQ_CHAT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_KEY}`
+    },
     body: JSON.stringify({
-      contents,
-      generationConfig: { temperature: 0.7, maxOutputTokens: 600 }
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      temperature: 0.7,
+      max_tokens: 600
     })
   });
 
   if (!res.ok) {
     const err = await res.json();
-    throw new Error(err?.error?.message || `Gemini error ${res.status}`);
+    throw new Error(err?.error?.message || `Groq error ${res.status}`);
   }
 
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
+  return data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
 }
 
 const LANGUAGES = [
@@ -175,19 +179,19 @@ export default function Chatbot() {
     setIsTyping(true);
 
     try {
-      const reply = await askGemini(text, chatHistory.current);
+      const reply = await askGroq(text, chatHistory.current);
       // Update conversation history for multi-turn context
       chatHistory.current = [
         ...chatHistory.current,
-        { role: 'user',  parts: [{ text }] },
-        { role: 'model', parts: [{ text: reply }] }
+        { role: 'user', content: text },
+        { role: 'assistant', content: reply }
       ].slice(-20); // Keep last 10 exchanges
 
       setIsTyping(false);
       setMessages(prev => [...prev, { id: Date.now() + 1, text: reply, sender: 'bot' }]);
       speak(reply);
     } catch (err) {
-      console.error('[AgriBot Gemini Error]', err);
+      console.error('[AgriBot Groq Error]', err);
       setIsTyping(false);
       setMessages(prev => [...prev, { id: Date.now() + 1, text: `⚠️ ${err.message}`, sender: 'bot' }]);
     }
@@ -260,7 +264,7 @@ export default function Chatbot() {
                 <div style={{ fontWeight: 700, fontSize: '1.1rem', fontFamily: 'var(--font-heading)' }}>AgriBot</div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                   <Sparkles size={10} />
-                  Gemini 2.0 · Agricultural AI
+                  Llama 3 70B · Agricultural AI
                 </div>
               </div>
             </div>
