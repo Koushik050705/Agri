@@ -1,56 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, X, Send, Bot, User, ChevronDown, Mic, Loader2, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MessageSquare, X, Send, Bot, User, ChevronDown, Mic } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-
-const GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
-const GROQ_CHAT_URL = `https://api.groq.com/openai/v1/chat/completions`;
-
-const AGRI_SYSTEM_PROMPT = `You are AgriBot, an expert AI agricultural assistant for Indian farmers built into the AgriVision platform.
-
-You specialize in:
-- Crop diseases, pests, and treatment recommendations
-- Soil health, nutrients, and amendments
-- Irrigation, fertilizer, and farm management
-- Indian government agricultural schemes (PM-Kisan, PMFBY, eNAM, etc.)
-- Seasonal crop calendars and sowing schedules
-- Market prices and crop selling tips
-- Weather impacts on agriculture
-- Organic farming and sustainable practices
-
-Always give practical, actionable advice tailored to Indian farming conditions.
-Respond in the SAME LANGUAGE the user writes in (Hindi, Telugu, Tamil, etc.).
-Keep responses concise but complete. Use bullet points for lists.
-If asked about something completely unrelated to agriculture or the AgriVision platform, politely redirect to agricultural topics.`;
-
-async function askGroq(userMessage, history = []) {
-  const messages = [
-    { role: 'system', content: AGRI_SYSTEM_PROMPT },
-    ...history,
-    { role: 'user', content: userMessage }
-  ];
-
-  const res = await fetch(GROQ_CHAT_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      temperature: 0.7,
-      max_tokens: 600
-    })
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err?.error?.message || `Groq error ${res.status}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
-}
 
 const LANGUAGES = [
   { code: 'en', label: 'English', flag: '🇬🇧', short: 'EN' },
@@ -66,7 +16,7 @@ const LANGUAGES = [
   { code: 'or', label: 'ଓଡ଼ିଆ', flag: '🇮🇳', short: 'OR' },
 ];
 
-// Legacy KB kept as quick-chip fallback only (chips now also use Gemini)
+// Realistic knowledge base for the chatbot
 const KB = {
   en: [
     { patterns: ['sell', 'upload crop', 'list crop', 'how to sell'], response: "To sell your crop: 1) Go to the **Marketplace** tab. 2) Click **'Sell Your Crop'**. 3) Fill in crop name, price per kg, quantity, and a description. 4) Submit — your crop goes live immediately for buyers to see!" },
@@ -135,9 +85,6 @@ export default function Chatbot() {
   ]);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const messagesEndRef = useRef(null);
-  const chatHistory = useRef([]); // Gemini multi-turn conversation history
 
   const currentLang = LANGUAGES.find(l => l.code === i18n.language) || LANGUAGES[0];
 
@@ -163,38 +110,27 @@ export default function Chatbot() {
     recognition.start();
   };
 
-  // Auto-scroll to latest message
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
-
-  const handleSend = async (e, overrideText) => {
+  const handleSend = (e) => {
     if (e) e.preventDefault();
-    const text = overrideText || input;
-    if (!text.trim()) return;
+    if (!input.trim()) return;
 
-    const userMsg = { id: Date.now(), text, sender: 'user' };
+    const userMsg = { id: Date.now(), text: input, sender: 'user' };
     setMessages(prev => [...prev, userMsg]);
+    const currentInput = input;
     setInput('');
-    setIsTyping(true);
 
-    try {
-      const reply = await askGroq(text, chatHistory.current);
-      // Update conversation history for multi-turn context
-      chatHistory.current = [
-        ...chatHistory.current,
-        { role: 'user', content: text },
-        { role: 'assistant', content: reply }
-      ].slice(-20); // Keep last 10 exchanges
-
-      setIsTyping(false);
-      setMessages(prev => [...prev, { id: Date.now() + 1, text: reply, sender: 'bot' }]);
-      speak(reply);
-    } catch (err) {
-      console.error('[AgriBot Groq Error]', err);
-      setIsTyping(false);
-      setMessages(prev => [...prev, { id: Date.now() + 1, text: `⚠️ ${err.message}`, sender: 'bot' }]);
-    }
+    const rawResponse = getBotResponse(currentInput, i18n.language);
+    
+    setTimeout(() => {
+      const botText = rawResponse || t('chat_default');
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        text: rawResponse || null,
+        sender: 'bot',
+        key: rawResponse ? null : 'chat_default'
+      }]);
+      speak(botText);
+    }, 700);
   };
 
   useEffect(() => {
@@ -262,9 +198,9 @@ export default function Chatbot() {
               </div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '1.1rem', fontFamily: 'var(--font-heading)' }}>AgriBot</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <Sparkles size={10} />
-                  Llama 3 70B · Agricultural AI
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--color-primary)', display: 'inline-block' }}></span>
+                  Online
                 </div>
               </div>
             </div>
@@ -320,10 +256,22 @@ export default function Chatbot() {
 
           {/* Quick Suggestion Chips */}
           <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {['Crop diseases?', 'Best fertilizer?', 'PM-Kisan scheme', 'Soil health tips'].map(chip => (
+            {['How to sell?', 'Disease scan', 'Check weather', 'Govt schemes'].map(chip => (
               <button
                 key={chip}
-                onClick={() => handleSend(null, chip)}
+                onClick={() => {
+                  const fakeEvent = { preventDefault: () => {} };
+                  setInput(chip);
+                  setTimeout(() => {
+                    const userMsg = { id: Date.now(), text: chip, sender: 'user' };
+                    setMessages(prev => [...prev, userMsg]);
+                    const rawResponse = getBotResponse(chip, i18n.language);
+                    setTimeout(() => {
+                      setMessages(prev => [...prev, { id: Date.now() + 1, text: rawResponse || null, sender: 'bot', key: rawResponse ? null : 'chat_default' }]);
+                    }, 600);
+                    setInput('');
+                  }, 0);
+                }}
                 style={{
                   padding: '0.3rem 0.75rem', fontSize: '0.75rem',
                   background: 'rgba(0,200,83,0.08)',
@@ -368,19 +316,6 @@ export default function Chatbot() {
                 )}
               </div>
             ))}
-            {/* Typing indicator */}
-            {isTyping && (
-              <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-start', maxWidth: '88%' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(0,200,83,0.4), rgba(0,200,83,0.2))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1px solid rgba(0,200,83,0.3)' }}>
-                  <Bot size={14} style={{ color: 'var(--color-primary)' }} />
-                </div>
-                <div style={{ padding: '0.7rem 1rem', borderRadius: '18px 18px 18px 4px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Loader2 size={14} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
-                  <span style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)' }}>AgriBot is thinking…</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Input */}
