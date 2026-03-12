@@ -1,234 +1,273 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Camera, AlertTriangle, CheckCircle, Leaf, Loader2,
-  RefreshCw, Upload, Image as ImageIcon, Beaker, ShieldCheck, ShieldX, Wifi, WifiOff
-} from 'lucide-react';
+import { Camera, AlertTriangle, CheckCircle, Leaf, Loader2, RefreshCw, Upload, Image as ImageIcon, Beaker, ShieldCheck, ShieldX } from 'lucide-react';
 import WeatherWidget from '../components/WeatherWidget';
+import * as tf from '@tensorflow/tfjs';
+import * as mobilenet from '@tensorflow-models/mobilenet';
 import { diseaseDiagnostics } from '../data/diseaseDiagnostics';
 import { soilDiagnostics } from '../data/soilDiagnostics';
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   Hugging Face Inference API  — free, no signup required for public models
-   Model 1 (Crop Disease): linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification
-   Model 2 (Image Classification / Validation): google/vit-base-patch16-224
-   Model 3 (Soil via vision-language): Salesforce/blip-image-captioning-base
- ──────────────────────────────────────────────────────────────────────────── */
-const HF_API = 'https://api-inference.huggingface.co/models';
-const PLANT_DISEASE_MODEL = `${HF_API}/linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification`;
-const VALIDATION_MODEL    = `${HF_API}/google/vit-base-patch16-224`;
-const SOIL_CAPTION_MODEL  = `${HF_API}/Salesforce/blip-image-captioning-base`;
+// ─────────────────────────────────────────────────────────────────────────────
+// ImageNet classes that indicate a valid agricultural subject (plant / soil)
+// MobileNet returns class names from ImageNet. These are the relevant ones.
+// ─────────────────────────────────────────────────────────────────────────────
+const PLANT_CLASSES = [
+  'daisy', 'dandelion', 'roses', 'sunflowers', 'tulips',
+  'cabbage', 'cauliflower', 'corn', 'cucumber', 'eggplant', 'squash',
+  'bell pepper', 'cucumber', 'strawberry', 'tomato', 'banana',
+  'broccoli', 'artichoke', 'mushroom', 'zucchini', 'lemon',
+  'orange', 'pomegranate', 'pineapple', 'fig', 'jackfruit', 'guava',
+  'leaf', 'plant', 'tree', 'shrub', 'flower', 'herb',
+  // Soil-related ImageNet classes
+  'lakeside', 'seashore', 'sand bar', 'cliff', 'valley',
+  'plowed field', 'terrain', 'lawn', 'dam', 'greenhouse',
+  'harvester', 'thresher', 'tractor'
+];
 
-// Plant/agriculture keywords to validate images
-const AGRI_WORDS = [
+// Keywords for matching inside class names
+const AGRI_KEYWORDS = [
   'plant', 'leaf', 'flower', 'tree', 'vegetable', 'fruit', 'crop',
-  'grass', 'garden', 'farm', 'soil', 'dirt', 'earth', 'ground',
-  'field', 'shrub', 'herb', 'mushroom', 'seaweed', 'fern',
-  'greenhouse', 'harvest', 'tractor', 'agriculture', 'nature'
+  'soil', 'dirt', 'grass', 'field', 'garden', 'farm', 'shrub',
+  'greenhouse', 'harvest', 'tractor', 'seaweed', 'fungus', 'mushroom'
 ];
 
-// Soil indicators from image caption
-const SOIL_HINTS = [
-  'soil', 'dirt', 'earth', 'ground', 'mud', 'clay', 'sand', 'gravel',
-  'rock', 'field', 'land', 'terrain', 'texture', 'brown', 'dark'
+const CROP_MODEL_URL =
+  'https://raw.githubusercontent.com/rexsimiloluwah/PLANT-DISEASE-CLASSIFIER-WEB-APP-TENSORFLOWJS/master/tensorflowjs-model/model.json';
+
+const CLASSES = [
+  'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy',
+  'Blueberry___healthy', 'Cherry_(including_sour)___Powdery_mildew', 'Cherry_(including_sour)___healthy',
+  'Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot', 'Corn_(maize)___Common_rust_',
+  'Corn_(maize)___Northern_Leaf_Blight', 'Corn_(maize)___healthy',
+  'Grape___Black_rot', 'Grape___Esca_(Black_Measles)', 'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)', 'Grape___healthy',
+  'Orange___Haunglongbing_(Citrus_greening)', 'Peach___Bacterial_spot', 'Peach___healthy',
+  'Pepper,_bell___Bacterial_spot', 'Pepper,_bell___healthy',
+  'Potato___Early_blight', 'Potato___Late_blight', 'Potato___healthy',
+  'Raspberry___healthy', 'Soybean___healthy', 'Squash___Powdery_mildew',
+  'Strawberry___Leaf_scorch', 'Strawberry___healthy',
+  'Tomato___Bacterial_spot', 'Tomato___Early_blight', 'Tomato___Late_blight',
+  'Tomato___Leaf_Mold', 'Tomato___Septoria_leaf_spot',
+  'Tomato___Spider_mites Two-spotted_spider_mite', 'Tomato___Target_Spot',
+  'Tomato___Tomato_Yellow_Leaf_Curl_Virus', 'Tomato___Tomato_mosaic_virus', 'Tomato___healthy'
 ];
-
-// Map HF plant disease labels → our diseaseDiagnostics keys
-function mapPlantLabel(label = '') {
-  const normalise = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  const key = normalise(label);
-  return Object.keys(diseaseDiagnostics).find(k => normalise(k) === key) || null;
-}
-
-// Convert image to base64 blob
-async function imageToBlob(src) {
-  if (src instanceof File || src instanceof Blob) return src;
-  return new Promise((res, rej) => {
-    const canvas = document.createElement('canvas');
-    canvas.width  = src.videoWidth  || src.naturalWidth  || src.width;
-    canvas.height = src.videoHeight || src.naturalHeight || src.height;
-    canvas.getContext('2d').drawImage(src, 0, 0);
-    canvas.toBlob(b => b ? res(b) : rej(new Error('Canvas toBlob failed')), 'image/jpeg', 0.85);
-  });
-}
 
 export default function Agritech() {
-  const [scanState, setScanState]         = useState('idle');
-  const [scanResult, setScanResult]       = useState(null);
-  const [soilType, setSoilType]           = useState('');
-  const [rainfall, setRainfall]           = useState('');
+  const [scanState, setScanState] = useState('idle');
+  const [scanResult, setScanResult] = useState(null);
+  const [soilType, setSoilType] = useState('');
+  const [rainfall, setRainfall] = useState('');
   const [recommendation, setRecommendation] = useState(null);
-  const [recommending, setRecommending]   = useState(false);
-  const [scanType, setScanType]           = useState('crop');
-  const [mode, setMode]                   = useState('upload');
+  const [recommending, setRecommending] = useState(false);
+  const [mode, setMode] = useState('upload');
+  const [scanType, setScanType] = useState('crop');
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [apiStatus, setApiStatus]         = useState('checking'); // checking | online | offline
+  const [validationModel, setValidationModel] = useState(null); // MobileNet (ImageNet)
+  const [cropModel, setCropModel] = useState(null);             // PlantVillage (38 diseases)
+  const [soilModel, setSoilModel] = useState(null);             // Trained soil sequential model
+  const [modelStatus, setModelStatus] = useState('loading');   // loading | ready | error
 
-  const videoRef    = useRef(null);
-  const canvasRef   = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // Ping HF to confirm the API is reachable
+  // ───────────────── Model Initialisation ─────────────────
   useEffect(() => {
-    fetch(PLANT_DISEASE_MODEL, { method: 'GET' })
-      .then(r => setApiStatus(r.ok || r.status === 503 ? 'online' : 'online'))
-      .catch(() => setApiStatus('offline'));
+    const init = async () => {
+      try {
+        setModelStatus('loading');
+        console.log('[AgriVision] Loading AI models...');
+
+        // 1. MobileNet for image validation (ImageNet, 1000 classes)
+        const mobileNetModel = await mobilenet.load({ version: 2, alpha: 1.0 });
+        setValidationModel(mobileNetModel);
+        console.log('[AgriVision] MobileNet loaded ✓');
+
+        // 2. PlantVillage disease model (pretrained TF.js, 38 crop×disease classes)
+        const plantModel = await tf.loadLayersModel(CROP_MODEL_URL);
+        setCropModel(plantModel);
+        console.log('[AgriVision] PlantVillage model loaded ✓');
+
+        // 3. Soil Analysis Model — sequential network trained on labelled soil features
+        // Features: [normalised_red, texture_approx, normalised_blue_green]
+        const soilKeys = Object.keys(soilDiagnostics);
+        const sm = tf.sequential({
+          layers: [
+            tf.layers.dense({ units: 32, activation: 'relu', inputShape: [3] }),
+            tf.layers.dropout({ rate: 0.2 }),
+            tf.layers.dense({ units: 16, activation: 'relu' }),
+            tf.layers.dense({ units: soilKeys.length, activation: 'softmax' })
+          ]
+        });
+        sm.compile({ optimizer: tf.train.adam(0.005), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
+
+        // Build training dataset from soil feature vectors (soil diagnostics are labelled samples)
+        const xs = tf.tensor2d(soilKeys.map(k => soilDiagnostics[k].features));
+        const ys = tf.oneHot(tf.tensor1d(soilKeys.map((_, i) => i), 'int32'), soilKeys.length);
+        await sm.fit(xs, ys, { epochs: 200, verbose: 0 });
+        xs.dispose(); ys.dispose();
+        setSoilModel(sm);
+        console.log('[AgriVision] Soil model trained ✓');
+
+        setModelStatus('ready');
+        console.log('[AgriVision] All models online ✓');
+      } catch (err) {
+        console.error('[AgriVision] Model init error:', err);
+        setModelStatus('error');
+      }
+    };
+    init();
   }, []);
 
-  // ─── Camera helpers ───────────────────────────────────────────────────────
+  // ───────────────── Camera helpers ─────────────────
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       if (videoRef.current) { videoRef.current.srcObject = stream; setIsCameraActive(true); }
-    } catch (e) { alert('Camera error: ' + e.message); }
+    } catch (err) { alert('Camera error: ' + err.message); }
   };
   const stopCamera = () => {
-    videoRef.current?.srcObject?.getTracks().forEach(t => t.stop());
-    setIsCameraActive(false);
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      setIsCameraActive(false);
+    }
   };
   useEffect(() => () => stopCamera(), []);
 
-  // ─── Hugging Face API call ────────────────────────────────────────────────
-  async function hfInfer(modelUrl, blob, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-      const res = await fetch(modelUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: blob
-      });
-      if (res.status === 503) {
-        // Model is loading — wait and retry
-        await new Promise(r => setTimeout(r, 4000));
-        continue;
-      }
-      if (!res.ok) throw new Error(`HF API error ${res.status}: ${await res.text()}`);
-      return res.json();
-    }
-    throw new Error('Hugging Face model is still loading. Please try again in 30 seconds.');
-  }
-
-  // ─── Main Analysis Pipeline ───────────────────────────────────────────────
+  // ───────────────── Main Analysis Pipeline ─────────────────
   const processAnalysis = async (inputSource) => {
+    if (modelStatus !== 'ready') {
+      setScanState('invalid');
+      setScanResult({ message: 'Models Not Ready', detail: 'Please wait for all AI models to finish loading.' });
+      return;
+    }
+
     setScanState('scanning');
+
     try {
-      // Prepare blob
+      // Prepare image element
       let imgEl;
       if (inputSource instanceof File || inputSource instanceof Blob) {
-        imgEl = inputSource;
+        imgEl = new Image();
+        imgEl.src = URL.createObjectURL(inputSource);
+        await new Promise((res, rej) => { imgEl.onload = res; imgEl.onerror = rej; });
       } else {
-        imgEl = await imageToBlob(inputSource);
+        imgEl = inputSource;
       }
 
-      /* ── STAGE 1: Image Validation via google/vit-base-patch16-224 ─────── */
-      const validationResult = await hfInfer(VALIDATION_MODEL, imgEl);
-      console.log('[HF Validation]', validationResult);
+      // ── STAGE 1: Image Validation via MobileNet (real ImageNet labels) ──
+      const predictions = await validationModel.classify(imgEl, 5); // top-5 predictions
+      console.log('[Validation] MobileNet top-5:', predictions);
 
-      const topLabel   = validationResult[0]?.label?.toLowerCase() || '';
-      const topScore   = validationResult[0]?.score || 0;
-      const isAgri     = AGRI_WORDS.some(w => topLabel.includes(w)) ||
-                         validationResult.slice(0, 5).some(p => AGRI_WORDS.some(w => p.label?.toLowerCase().includes(w)));
+      const isAgricultural = predictions.some(p => {
+        const cls = p.className.toLowerCase();
+        return AGRI_KEYWORDS.some(kw => cls.includes(kw)) ||
+               PLANT_CLASSES.some(pc => cls.includes(pc));
+      });
 
-      if (scanType === 'crop' && !isAgri) {
+      if (!isAgricultural) {
         setScanState('invalid');
         setScanResult({
           message: 'Invalid or Irrelevant Image',
-          detail: `The AI detected: "${validationResult[0]?.label}" (${(topScore * 100).toFixed(1)}%). Please upload a clear crop leaf photo.`,
-          detectedClass: validationResult[0]?.label,
-          detectedScore: (topScore * 100).toFixed(1)
+          detail: `The AI detected: "${predictions[0].className}". Please upload a clear image of a crop leaf or soil sample.`,
+          detectedClass: predictions[0].className,
+          detectedScore: (predictions[0].probability * 100).toFixed(1)
         });
         return;
       }
 
-      /* ── STAGE 2A: Crop Disease — linkanjarad plant disease model ───────── */
+      // ── STAGE 2: Specialised Model Analysis ──
+      const imgTensor = tf.browser.fromPixels(imgEl);
+      const resized   = tf.image.resizeBilinear(imgTensor, [224, 224]);
+      const normalised = resized.toFloat().div(tf.scalar(127.5)).sub(tf.scalar(1)).expandDims();
+
       if (scanType === 'crop') {
-        const diseaseResult = await hfInfer(PLANT_DISEASE_MODEL, imgEl);
-        console.log('[HF Crop Disease]', diseaseResult);
+        // PlantVillage disease model inference
+        const preds    = await cropModel.predict(normalised).data();
+        const maxProb  = Math.max(...preds);
+        const maxIdx   = preds.indexOf(maxProb);
 
-        const topDisease  = diseaseResult[0];
-        const confidence  = (topDisease?.score || 0) * 100;
-
-        if (confidence < 20) {
+        if (maxProb < 0.25) {
           setScanState('invalid');
           setScanResult({
             message: 'Invalid or Irrelevant Image',
-            detail: 'The Plant Disease AI could not identify a recognisable crop in this image. Please upload a clear, well-lit close-up of a plant leaf.'
+            detail: 'The Plant AI could not identify a recognisable crop leaf. Please upload a clear, well-lit leaf photo.'
           });
+          imgTensor.dispose(); resized.dispose(); normalised.dispose();
           return;
         }
 
-        // Try to map the HF label to our detailed diseaseDiagnostics data
-        const diagKey    = mapPlantLabel(topDisease.label);
-        const diagnostic = diagKey ? diseaseDiagnostics[diagKey] : null;
-
-        // Parse crop/disease from label if no direct mapping (format: "Crop___Condition")
-        const parts      = (topDisease.label || '').split('___');
-        const cropName   = diagnostic?.crop  || parts[0]?.replace(/_/g, ' ') || 'Unknown Crop';
-        const diseaseName = diagnostic?.disease || parts[1]?.replace(/_/g, ' ') || topDisease.label;
-        const recommendation = diagnostic?.recommendation || 'Consult a certified agronomist for treatment options.';
-        const visual     = diagnostic?.visual_markers || '';
+        const className  = CLASSES[maxIdx];
+        const diagnostic = diseaseDiagnostics[className] || {};
+        const validationLabel = predictions[0].className;
 
         setScanState('valid');
         setScanResult({
-          source: 'Hugging Face — linkanjarad/plant-disease-model',
-          crop:   cropName,
-          disease: diseaseName,
-          recommendation,
-          visual_markers: visual,
-          confidence: confidence.toFixed(1) + '%',
-          validationLabel: validationResult[0]?.label,
-          validationScore: (topScore * 100).toFixed(1),
-          allPredictions: diseaseResult.slice(0, 3)
+          isValid:           true,
+          crop:              diagnostic.crop     || className.split('___')[0],
+          disease:           diagnostic.disease  || 'Unknown Condition',
+          recommendation:    diagnostic.recommendation || 'Consult an agronomist.',
+          visual_markers:    diagnostic.visual_markers || '',
+          confidence:        (maxProb * 100).toFixed(1) + '%',
+          validationClass:   validationLabel,
+          validationScore:   (predictions[0].probability * 100).toFixed(1)
         });
-
-      /* ── STAGE 2B: Soil Analysis — BLIP image captioning ────────────────── */
       } else {
-        const captionResult = await hfInfer(SOIL_CAPTION_MODEL, imgEl);
-        console.log('[HF Soil Caption]', captionResult);
+        // Soil analysis using trained sequential model
+        // Extract dominant colour features from the image
+        const canvas = document.createElement('canvas');
+        const ctx    = canvas.getContext('2d');
+        canvas.width = 50; canvas.height = 50;
+        ctx.drawImage(imgEl, 0, 0, 50, 50);
+        const pixels = ctx.getImageData(0, 0, 50, 50).data;
 
-        const caption = captionResult[0]?.generated_text?.toLowerCase() || '';
-        console.log('[Soil Caption]', caption);
+        let totalR = 0, totalG = 0, totalB = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          totalR += pixels[i]; totalG += pixels[i + 1]; totalB += pixels[i + 2];
+        }
+        const count = pixels.length / 4;
+        const avgR = totalR / count / 255;
+        const avgG = totalG / count / 255;
+        const avgB = totalB / count / 255;
 
-        // Check if caption indicates soil
-        const isSoil = SOIL_HINTS.some(h => caption.includes(h)) || isAgri;
+        // Feature vector for soil model: [avg_red, avg_green, avg_blue]
+        const features = tf.tensor2d([[avgR, avgG, avgB]]);
+        const pred     = await soilModel.predict(features).data();
+        features.dispose();
 
-        if (!isSoil) {
+        const maxSoilProb = Math.max(...pred);
+        const maxSoilIdx  = pred.indexOf(maxSoilProb);
+
+        if (maxSoilProb < 0.45) {
           setScanState('invalid');
           setScanResult({
             message: 'Invalid or Irrelevant Image',
-            detail: `The AI described the image as: "${captionResult[0]?.generated_text}". Please upload a close-up photo of soil.`
+            detail: 'The Soil AI could not match this image to any known soil profile. Please upload a close-up photo of soil.'
           });
+          imgTensor.dispose(); resized.dispose(); normalised.dispose();
           return;
         }
 
-        // Match caption keywords against our soil diagnostics
-        const soilKeys = Object.keys(soilDiagnostics);
-        let bestMatch = soilKeys[0], bestScore = 0;
-        soilKeys.forEach(key => {
-          const data   = soilDiagnostics[key];
-          const target = `${data.type} ${data.issue}`.toLowerCase();
-          let score = 0;
-          target.split(' ').forEach(word => { if (caption.includes(word)) score++; });
-          if (score > bestScore) { bestScore = score; bestMatch = key; }
-        });
-
-        const diagnostic = soilDiagnostics[bestMatch];
+        const soilKey    = Object.keys(soilDiagnostics)[maxSoilIdx];
+        const diagnostic = soilDiagnostics[soilKey];
 
         setScanState('valid');
         setScanResult({
-          source: 'Hugging Face — Salesforce/blip-image-captioning',
-          crop:   diagnostic.type,
-          disease: diagnostic.issue,
-          recommendation: diagnostic.recommendation,
-          ph_range: diagnostic.ph_range,
-          ideal_crops: diagnostic.ideal_crops,
-          caption: captionResult[0]?.generated_text,
-          confidence: bestScore > 0 ? `${Math.min(85 + bestScore * 3, 97)}%` : '62%',
-          validationLabel: validationResult[0]?.label,
-          validationScore: (topScore * 100).toFixed(1),
+          isValid:          true,
+          crop:             diagnostic.type,
+          disease:          diagnostic.issue,
+          recommendation:   diagnostic.recommendation,
+          ph_range:         diagnostic.ph_range,
+          ideal_crops:      diagnostic.ideal_crops,
+          confidence:       (maxSoilProb * 100).toFixed(1) + '%',
+          validationClass:  predictions[0].className,
+          validationScore:  (predictions[0].probability * 100).toFixed(1)
         });
       }
+
+      imgTensor.dispose(); resized.dispose(); normalised.dispose();
     } catch (err) {
-      console.error('[AgriVision API Error]', err);
+      console.error('[AgriVision] Pipeline error:', err);
       setScanState('invalid');
-      setScanResult({ message: 'API Error', detail: err.message });
+      setScanResult({ message: 'Processing Error', detail: err.message });
     }
   };
 
@@ -245,27 +284,29 @@ export default function Agritech() {
 
   const handleRecommend = () => {
     if (!soilType || !rainfall) return;
-    setRecommending(true); setRecommendation(null);
+    setRecommending(true);
+    setRecommendation(null);
     setTimeout(() => {
       const rain = parseInt(rainfall), soil = soilType.toLowerCase();
       let result;
-      if      (soil.includes('loam') && rain > 1000) result = { crops: 'Rice, Sugarcane, Banana', reason: 'Loamy soil + high rainfall ⟶ water-intensive crops.' };
-      else if (soil.includes('loam') && rain >= 500) result = { crops: 'Wheat, Maize, Mustard', reason: 'Versatile loamy soil with moderate rainfall.' };
-      else if (soil.includes('sand') || rain < 500)  result = { crops: 'Millets, Pulses, Guar', reason: 'Sandy/dry soil ⟶ drought-resistant crops.' };
-      else if (soil.includes('black'))               result = { crops: 'Cotton, Soybean, Groundnut', reason: 'Black cotton soil ⟶ fibre & oilseeds.' };
-      else if (soil.includes('clay'))                result = { crops: 'Rice, Jute, Wheat', reason: 'Clay retains moisture ⟶ paddy & fibre crops.' };
-      else                                           result = { crops: 'Vegetables, Pulses, Fodder', reason: 'General conditions ⟶ short-duration crops.' };
-      setRecommendation(result); setRecommending(false);
+      if      (soil.includes('loam') && rain > 1000) result = { crops: 'Rice, Sugarcane, Banana',     reason: 'Loamy soil + high rainfall ⟶ water-intensive crops.' };
+      else if (soil.includes('loam') && rain >= 500) result = { crops: 'Wheat, Maize, Mustard',        reason: 'Versatile loamy soil with moderate rainfall.' };
+      else if (soil.includes('sand') || rain < 500)  result = { crops: 'Millets, Pulses, Guar',        reason: 'Sandy/dry soil ⟶ drought-resistant crops.' };
+      else if (soil.includes('black'))               result = { crops: 'Cotton, Soybean, Groundnut',   reason: 'Black cotton soil (Regur) ⟶ fibre & oilseeds.' };
+      else if (soil.includes('clay'))                result = { crops: 'Rice, Jute, Wheat',             reason: 'Clay retains moisture ⟶ paddy & fibre crops.' };
+      else                                           result = { crops: 'Vegetables, Pulses, Fodder',   reason: 'General conditions ⟶ short-duration rotational crops.' };
+      setRecommendation(result);
+      setRecommending(false);
     }, 1200);
   };
 
-  // ─── Status config ────────────────────────────────────────────────────────
-  const statusConf = {
-    checking: { label: 'Connecting to AI…', color: 'var(--color-warning)',  icon: <Loader2 size={13} className="animate-spin" /> },
-    online:   { label: 'HF API Ready',      color: 'var(--color-primary)',  icon: <Wifi size={13} /> },
-    offline:  { label: 'API Unreachable',   color: 'var(--color-danger)',   icon: <WifiOff size={13} /> }
+  // ───────────────── UI helpers ─────────────────
+  const modelStatusConfig = {
+    loading: { text: 'AI Loading…',     color: 'var(--color-warning)',  spin: true  },
+    ready:   { text: 'AI Ready',        color: 'var(--color-primary)',  spin: false },
+    error:   { text: 'Model Error',     color: 'var(--color-danger)',   spin: false }
   };
-  const st = statusConf[apiStatus];
+  const mConf = modelStatusConfig[modelStatus];
 
   return (
     <div className="container" style={{ padding: '3rem 1.5rem' }}>
@@ -274,25 +315,19 @@ export default function Agritech() {
       <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 className="title-glow" style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>AI Agritech Insights</h1>
-          <p className="subtitle">Cloud-powered disease detection using Hugging Face pretrained models.</p>
+          <p className="subtitle">Real-time disease detection via vision AI and professional crop planning.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 1rem', borderRadius: 'var(--radius-pill)', backgroundColor: 'var(--color-bg-elevated)', border: `1px solid ${st.color}`, fontSize: '0.8rem', fontWeight: 600, color: st.color }}>
-          {st.icon} {st.label}
+        {/* Model status pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 1rem', borderRadius: 'var(--radius-pill)', backgroundColor: 'var(--color-bg-elevated)', border: `1px solid ${mConf.color}`, fontSize: '0.8rem', fontWeight: 600, color: mConf.color }}>
+          {mConf.spin ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+          {mConf.text}
         </div>
-      </div>
-
-      {/* API info banner */}
-      <div style={{ marginBottom: '1.5rem', padding: '0.75rem 1.25rem', backgroundColor: 'rgba(74,222,128,0.05)', borderRadius: 12, border: '1px solid rgba(74,222,128,0.15)', fontSize: '0.8rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-        <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>↗ Hugging Face APIs: </span>
-        <span style={{ marginRight: '1.5rem' }}><strong>Validation</strong>: google/vit-base-patch16-224</span>
-        <span style={{ marginRight: '1.5rem' }}><strong>Crop Disease</strong>: linkanjarad/mobilenet_v2-plant-disease</span>
-        <span><strong>Soil</strong>: Salesforce/blip-image-captioning</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
 
-        {/* Scanner */}
-        <div className="glass-card" style={{ gridColumn: '1 / -1', maxWidth: '960px' }}>
+        {/* ── Scanner Widget ── */}
+        <div className="glass-card" style={{ gridColumn: '1 / -1', maxWidth: '940px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <Camera style={{ color: 'var(--color-primary)' }} />
@@ -302,97 +337,127 @@ export default function Agritech() {
               {['crop', 'soil'].map(t => (
                 <button key={t}
                   onClick={() => { setScanType(t); setScanState('idle'); setScanResult(null); }}
-                  style={{ fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600, color: scanType === t ? 'white' : 'var(--color-text-muted)', backgroundColor: scanType === t ? 'var(--color-primary)' : 'var(--color-bg-elevated)', padding: '0.3rem 0.8rem', borderRadius: 'var(--radius-pill)', border: '1px solid rgba(74,222,128,.2)', transition: 'all .2s' }}>
-                  {t === 'crop' ? <><Leaf size={13} style={{ marginRight: 3, verticalAlign: 'middle' }} />Crop Leaf</> : <><Beaker size={13} style={{ marginRight: 3, verticalAlign: 'middle' }} />Soil Health</>}
+                  style={{ fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600,
+                    color: scanType === t ? 'white' : 'var(--color-text-muted)',
+                    backgroundColor: scanType === t ? 'var(--color-primary)' : 'var(--color-bg-elevated)',
+                    padding: '0.3rem 0.8rem', borderRadius: 'var(--radius-pill)',
+                    border: '1px solid rgba(74,222,128,.2)', transition: 'all .2s' }}>
+                  {t === 'crop' ? <><Leaf size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />Crop Leaf</> : <><Beaker size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />Soil Health</>}
                 </button>
               ))}
             </div>
           </div>
 
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', marginBottom: '1.5rem', fontStyle: 'italic' }}>
-            Stage 1: google/ViT validates image relevance → Stage 2: {scanType === 'crop' ? 'linkanjarad plant disease model' : 'BLIP image captioning'} performs analysis
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem', fontStyle: 'italic' }}>
+            {scanType === 'crop'
+              ? '● Stage 1: MobileNet image validation  ● Stage 2: PlantVillage AI (38 disease classes)'
+              : '● Stage 1: MobileNet image validation  ● Stage 2: Trained soil feature model'}
           </p>
 
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-            {[{ id: 'upload', icon: <Upload size={16} />, label: 'Upload Image' }, { id: 'webcam', icon: <Camera size={16} />, label: 'Live Scan' }].map(b => (
-              <button key={b.id}
-                className={mode === b.id ? 'btn-primary' : 'btn-secondary'}
+            {[
+              { id: 'upload', icon: <Upload size={18} />, label: 'Upload Image' },
+              { id: 'webcam', icon: <Camera size={18} />, label: 'Live Scan' }
+            ].map(btn => (
+              <button key={btn.id}
+                className={mode === btn.id ? 'btn-primary' : 'btn-secondary'}
                 style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                onClick={() => { setMode(b.id); if (b.id === 'webcam') startCamera(); else stopCamera(); setScanState('idle'); setScanResult(null); }}>
-                {b.icon} {b.label}
+                onClick={() => { setMode(btn.id); if (btn.id === 'webcam') startCamera(); else stopCamera(); setScanState('idle'); setScanResult(null); }}
+                disabled={modelStatus !== 'ready'}>
+                {btn.icon} {btn.label}
               </button>
             ))}
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem' }}>
 
-            {/* View */}
-            <div style={{ flex: '1 1 400px', minHeight: 320, backgroundColor: '#000', borderRadius: 'var(--radius-md)', position: 'relative', overflow: 'hidden', border: '1px solid var(--color-bg-elevated)' }}>
+            {/* ── View area ── */}
+            <div style={{ flex: '1 1 400px', minHeight: '320px', backgroundColor: '#000', borderRadius: 'var(--radius-md)', position: 'relative', overflow: 'hidden', border: '1px solid var(--color-bg-elevated)' }}>
 
+              {/* Loading overlay */}
+              {modelStatus === 'loading' && (
+                <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '1.5rem' }}>
+                  <Loader2 size={48} className="animate-spin" style={{ color: 'var(--color-primary)', marginBottom: '1rem' }} />
+                  <p style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>Initialising AgriVision AI</p>
+                  <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Loading MobileNet + PlantVillage + Soil model…</p>
+                </div>
+              )}
+
+              {/* Webcam */}
               {mode === 'webcam' && (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {isCameraActive ? (
                     <>
                       <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 200, height: 200, border: '2px solid rgba(74,222,128,.5)', borderRadius: 24, boxShadow: '0 0 0 1000px rgba(0,0,0,0.5)' }} />
-                      <button onClick={captureImage} style={{ position: 'absolute', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)', width: 60, height: 60, borderRadius: '50%', border: '3px solid white', backgroundColor: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                        <Camera size={24} color="white" />
+                      <button onClick={captureImage} style={{ position: 'absolute', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)', width: 64, height: 64, borderRadius: '50%', border: '4px solid white', backgroundColor: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                        <Camera size={28} color="white" />
                       </button>
                     </>
                   ) : (
                     <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                      <Camera size={44} style={{ marginBottom: '1rem' }} />
+                      <Camera size={48} style={{ marginBottom: '1rem' }} />
                       <p>Starting Camera…</p>
                     </div>
                   )}
                 </div>
               )}
 
+              {/* Upload idle */}
               {mode === 'upload' && scanState === 'idle' && (
-                <label style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', cursor: 'pointer', border: '2px dashed var(--color-bg-elevated)' }}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', border: '2px dashed var(--color-bg-elevated)' }}>
                   <ImageIcon size={52} style={{ color: 'var(--color-text-muted)', marginBottom: '1rem' }} />
-                  <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Upload {scanType === 'crop' ? 'Crop Leaf' : 'Soil'} Image</p>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>Powered by Hugging Face cloud APIs</p>
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) processAnalysis(f); }} />
-                </label>
+                  <p style={{ fontWeight: 500, marginBottom: '0.5rem' }}>Upload {scanType === 'crop' ? 'Crop Leaf' : 'Soil Sample'} Image</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                    MobileNet will validate the image before analysis.
+                  </p>
+                  <input type="file" accept="image/*" onChange={e => { const f = e.target.files[0]; if (f) processAnalysis(f); }} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+                </div>
               )}
 
+              {/* State overlays */}
               {['scanning', 'valid', 'invalid'].includes(scanState) && (
-                <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {scanState === 'scanning' && (
-                    <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-                      <div style={{ position: 'relative', width: 100, height: 100, margin: '0 auto 1.5rem' }}>
-                        <Loader2 size={100} className="animate-spin" style={{ color: 'var(--color-primary)', position: 'absolute', inset: 0 }} />
-                        <div style={{ position: 'absolute', inset: 8, backgroundColor: 'var(--color-bg-dark)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <RefreshCw size={32} className="animate-pulse" style={{ color: 'var(--color-primary)' }} />
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ position: 'relative', width: 120, height: 120, margin: '0 auto 1.5rem' }}>
+                        <Loader2 size={120} className="animate-spin" style={{ color: 'var(--color-primary)', position: 'absolute', inset: 0 }} />
+                        <div style={{ position: 'absolute', inset: 10, backgroundColor: 'var(--color-bg-dark)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <RefreshCw size={40} className="animate-pulse" style={{ color: 'var(--color-primary)' }} />
                         </div>
                       </div>
-                      <p style={{ fontWeight: 700, color: 'var(--color-primary)' }}>Calling Hugging Face APIs…</p>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '0.3rem' }}>Stage 1: ViT validation → Stage 2: {scanType === 'crop' ? 'Plant Disease' : 'BLIP Captioning'}</p>
+                      <p style={{ fontWeight: 600, color: 'var(--color-primary)', fontSize: '1.1rem' }}>Running AI Pipeline…</p>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.3rem' }}>Stage 1: MobileNet validation → Stage 2: Diagnostic model</p>
                     </div>
                   )}
                   {scanState === 'invalid' && (
                     <div style={{ textAlign: 'center', padding: '2rem', maxWidth: 320 }}>
-                      <ShieldX size={60} style={{ color: 'var(--color-danger)', margin: '0 auto 1.5rem' }} />
+                      <ShieldX size={64} style={{ color: 'var(--color-danger)', margin: '0 auto 1.5rem' }} />
                       <p style={{ fontWeight: 700, color: 'var(--color-danger)', fontSize: '1.1rem', marginBottom: '0.5rem' }}>{scanResult?.message}</p>
-                      <p style={{ fontSize: '0.83rem', color: 'var(--color-text-muted)', marginBottom: '1.5rem', lineHeight: 1.5 }}>{scanResult?.detail}</p>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: scanResult?.detectedClass ? '0.75rem' : '2rem', lineHeight: 1.5 }}>{scanResult?.detail}</p>
+                      {scanResult?.detectedClass && (
+                        <p style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '1.5rem', fontStyle: 'italic' }}>MobileNet detected: "{scanResult.detectedClass}" ({scanResult.detectedScore}%)</p>
+                      )}
                       <button className="btn-secondary" onClick={() => { setScanState('idle'); setScanResult(null); }}>Try Again</button>
                     </div>
                   )}
                   {scanState === 'valid' && (
                     <div style={{ textAlign: 'center', padding: '2rem' }}>
-                      <ShieldCheck size={60} style={{ color: 'var(--color-primary)', margin: '0 auto 1.5rem' }} />
-                      <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>Analysis Complete!</p>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.5rem', fontStyle: 'italic' }}>ViT detected: "{scanResult?.validationLabel}"</p>
+                      <ShieldCheck size={64} style={{ color: 'var(--color-primary)', margin: '0 auto 1.5rem' }} />
+                      <p style={{ fontWeight: 700, fontSize: '1.2rem' }}>Analysis Complete</p>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                        MobileNet: "{scanResult?.validationClass}" ({scanResult?.validationScore}%)
+                      </p>
                       <button className="btn-secondary" style={{ marginTop: '1.5rem' }} onClick={() => { setScanState('idle'); setScanResult(null); if (mode === 'webcam') startCamera(); }}>New Scan</button>
                     </div>
                   )}
                 </div>
               )}
+
               <canvas ref={canvasRef} style={{ display: 'none' }} />
             </div>
 
-            {/* Results */}
+            {/* ── Results Panel ── */}
             <div style={{ flex: '1 1 280px', padding: '1.5rem', backgroundColor: 'var(--color-bg-dark)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-bg-elevated)' }}>
               <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <CheckCircle size={16} style={{ color: 'var(--color-primary)' }} /> AI Diagnostic Report
@@ -401,110 +466,86 @@ export default function Agritech() {
               {scanState === 'valid' && scanResult ? (
                 <div style={{ display: 'grid', gap: '1rem' }}>
 
-                  {/* Source */}
-                  <div style={{ padding: '0.5rem 0.9rem', backgroundColor: 'rgba(74,222,128,0.06)', borderRadius: 8, border: '1px solid rgba(74,222,128,0.15)', fontSize: '0.7rem', color: 'var(--color-primary)', fontWeight: 700 }}>
-                    ✓ {scanResult.source}
-                  </div>
-
-                  {/* Validity */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>Image Validity:</span>
-                    <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--color-primary)' }}>PASS — Verified</span>
+                  {/* Validity row */}
+                  <div style={{ padding: '0.6rem 1rem', backgroundColor: 'rgba(74,222,128,0.08)', borderRadius: 10, border: '1px solid rgba(74,222,128,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase' }}>Image Validity</span>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'white' }}>✓ PASS — Verified</span>
                   </div>
 
                   {/* Detected subject */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>{scanType === 'crop' ? 'Detected Crop' : 'Soil Type'}:</span>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>{scanType === 'crop' ? 'Crop Detected' : 'Soil Type'}:</span>
                     <span style={{ fontWeight: 700, fontSize: '1rem' }}>{scanResult.crop}</span>
                   </div>
 
-                  {/* Confidence */}
+                  {/* Confidence bar */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>Model Confidence:</span>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Model Confidence:</span>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ height: 4, width: 90, backgroundColor: 'var(--color-bg-elevated)', borderRadius: 10, overflow: 'hidden', marginBottom: 2 }}>
+                      <div style={{ height: 5, width: 90, backgroundColor: 'var(--color-bg-elevated)', borderRadius: 10, overflow: 'hidden', marginBottom: 3 }}>
                         <div style={{ height: '100%', width: scanResult.confidence, backgroundColor: 'var(--color-primary)' }} />
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 700 }}>{scanResult.confidence}</span>
                     </div>
                   </div>
 
-                  {/* Disease / Issue */}
-                  <div style={{ padding: '0.9rem', backgroundColor: scanResult.disease?.includes('Healthy') ? 'rgba(74,222,128,0.05)' : 'rgba(239,68,68,0.05)', borderRadius: 12, border: `1px solid ${scanResult.disease?.includes('Healthy') ? 'rgba(74,222,128,.2)' : 'rgba(239,68,68,.2)'}` }}>
-                    <p style={{ fontSize: '0.6rem', color: scanResult.disease?.includes('Healthy') ? 'var(--color-primary)' : 'var(--color-danger)', fontWeight: 700, marginBottom: '0.3rem', textTransform: 'uppercase' }}>
-                      {scanType === 'crop' ? 'Disease Prediction' : 'Soil Issue'}
+                  {/* Disease / Soil issue */}
+                  <div style={{ padding: '0.9rem', backgroundColor: scanResult.disease === 'Healthy' || scanResult.disease?.includes('Healthy') ? 'rgba(74,222,128,0.05)' : 'rgba(239,68,68,0.05)', borderRadius: 12, border: `1px solid ${scanResult.disease === 'Healthy' || scanResult.disease?.includes('Healthy') ? 'rgba(74,222,128,.2)' : 'rgba(239,68,68,.2)'}` }}>
+                    <p style={{ fontSize: '0.65rem', color: scanResult.disease === 'Healthy' || scanResult.disease?.includes('Healthy') ? 'var(--color-primary)' : 'var(--color-danger)', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+                      {scanType === 'crop' ? 'Disease Prediction' : 'Soil Issue Detected'}
                     </p>
                     <p style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>{scanResult.disease}</p>
                   </div>
 
-                  {/* BLIP caption for soil */}
-                  {scanType === 'soil' && scanResult.caption && (
-                    <div style={{ padding: '0.8rem', backgroundColor: 'rgba(255,184,0,0.05)', borderRadius: 10, border: '1px solid rgba(255,184,0,0.2)' }}>
-                      <p style={{ fontSize: '0.6rem', color: 'var(--color-warning)', fontWeight: 700, marginBottom: '0.3rem', textTransform: 'uppercase' }}>BLIP Caption</p>
-                      <p style={{ fontSize: '0.8rem', fontStyle: 'italic', margin: 0, color: '#aaa' }}>"{scanResult.caption}"</p>
-                    </div>
-                  )}
-
-                  {/* Visual markers for crop */}
+                  {/* Crop-specific: visual markers */}
                   {scanType === 'crop' && scanResult.visual_markers && (
-                    <div style={{ padding: '0.8rem', backgroundColor: 'rgba(255,184,0,0.05)', borderRadius: 10, border: '1px solid rgba(255,184,0,0.2)' }}>
-                      <p style={{ fontSize: '0.6rem', color: 'var(--color-warning)', fontWeight: 700, marginBottom: '0.3rem', textTransform: 'uppercase' }}>Visual Markers</p>
-                      <p style={{ fontSize: '0.8rem', lineHeight: 1.5, margin: 0 }}>{scanResult.visual_markers}</p>
+                    <div style={{ padding: '0.9rem', backgroundColor: 'rgba(255,184,0,0.05)', borderRadius: 12, border: '1px solid rgba(255,184,0,0.2)' }}>
+                      <p style={{ fontSize: '0.65rem', color: 'var(--color-warning)', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase' }}>Observed Visual Markers</p>
+                      <p style={{ fontSize: '0.82rem', lineHeight: 1.5, margin: 0 }}>{scanResult.visual_markers}</p>
                     </div>
                   )}
 
-                  {/* Soil specifics */}
+                  {/* Soil-specific: pH + recommended crops */}
                   {scanType === 'soil' && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <div style={{ padding: '0.75rem', backgroundColor: 'var(--color-bg-elevated)', borderRadius: 10 }}>
-                        <p style={{ fontSize: '0.58rem', color: 'var(--color-text-muted)', fontWeight: 700, marginBottom: '0.25rem', textTransform: 'uppercase' }}>Target pH</p>
+                      <div style={{ padding: '0.8rem', backgroundColor: 'var(--color-bg-elevated)', borderRadius: 10 }}>
+                        <p style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', fontWeight: 700, marginBottom: '0.25rem', textTransform: 'uppercase' }}>Target pH</p>
                         <p style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, color: 'var(--color-primary)' }}>{scanResult.ph_range}</p>
                       </div>
-                      <div style={{ padding: '0.75rem', backgroundColor: 'var(--color-bg-elevated)', borderRadius: 10 }}>
-                        <p style={{ fontSize: '0.58rem', color: 'var(--color-text-muted)', fontWeight: 700, marginBottom: '0.25rem', textTransform: 'uppercase' }}>Best Crops</p>
-                        <p style={{ fontSize: '0.72rem', fontWeight: 600, margin: 0 }}>{scanResult.ideal_crops}</p>
+                      <div style={{ padding: '0.8rem', backgroundColor: 'var(--color-bg-elevated)', borderRadius: 10 }}>
+                        <p style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', fontWeight: 700, marginBottom: '0.25rem', textTransform: 'uppercase' }}>Best Crops</p>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 600, margin: 0 }}>{scanResult.ideal_crops}</p>
                       </div>
                     </div>
                   )}
 
                   {/* Recommendation */}
                   <div style={{ padding: '0.9rem', backgroundColor: 'rgba(0,200,83,0.05)', borderRadius: 12, border: '1px solid rgba(0,200,83,.2)' }}>
-                    <p style={{ fontSize: '0.6rem', color: 'var(--color-primary)', fontWeight: 700, marginBottom: '0.3rem', textTransform: 'uppercase' }}>AI Recommendation</p>
+                    <p style={{ fontSize: '0.65rem', color: 'var(--color-primary)', fontWeight: 700, marginBottom: '0.4rem', textTransform: 'uppercase' }}>AI Recommendation</p>
                     <p style={{ fontSize: '0.82rem', lineHeight: 1.5, margin: 0 }}>{scanResult.recommendation}</p>
                   </div>
 
-                  {/* Top alternate predictions */}
-                  {scanResult.allPredictions?.length > 1 && (
-                    <div>
-                      <p style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'uppercase' }}>Other Predictions</p>
-                      {scanResult.allPredictions.slice(1).map((p, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          <span>{p.label?.replace(/___/g, ' / ')?.replace(/_/g, ' ')}</span>
-                          <span>{(p.score * 100).toFixed(1)}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                  {scanState === 'scanning' ? 'Querying Hugging Face APIs…' : 'Upload or capture an image to begin cloud AI analysis.'}
+                  {scanState === 'scanning' ? 'Running neural network inference…' : 'Upload or scan an image to begin AI diagnosis.'}
                 </div>
               )}
             </div>
           </div>
         </div>
 
+        {/* Weather Widget */}
         <WeatherWidget />
 
         {/* Smart Recommender */}
         <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <Leaf style={{ color: 'var(--color-primary)' }} />
-            <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Smart Recommender</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', color: 'var(--color-primary)' }}>
+            <Leaf />
+            <h2 style={{ fontSize: '1.25rem', margin: 0, color: 'var(--color-text-main)' }}>Smart Recommender</h2>
           </div>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-            Enter your soil type and rainfall to get an AI-curated crop recommendation.
+            Enter your soil type and expected rainfall to get an AI-curated crop recommendation.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
             <input type="text" className="input-field" placeholder="Soil Type (e.g. Loamy, Black, Sandy…)" value={soilType} onChange={e => setSoilType(e.target.value)} />
@@ -523,6 +564,7 @@ export default function Agritech() {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
