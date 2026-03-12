@@ -10,7 +10,7 @@ import WeatherWidget from '../components/WeatherWidget';
    API key is read from .env → VITE_GEMINI_API_KEY
  ──────────────────────────────────────────────────────────────────────────── */
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
 
 // Convert an image source to base64 string
 async function toBase64(src) {
@@ -228,7 +228,7 @@ export default function Agritech() {
           <p className="subtitle">Powered by Google Gemini Vision AI — real agricultural intelligence.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 1rem', borderRadius: 'var(--radius-pill)', backgroundColor: 'var(--color-bg-elevated)', border: '1px solid rgba(74,222,128,0.3)', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-primary)' }}>
-          <Sparkles size={13} /> Gemini 1.5 Flash
+          <Sparkles size={13} /> Gemini 2.5 Pro
         </div>
       </div>
 
