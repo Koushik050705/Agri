@@ -56,7 +56,7 @@ export default function Marketplace() {
         {/* Controls */}
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
           
-          <div style={{ display: 'flex', gap: '1rem', flex: 1, minWidth: '300px' }}>
+          <div style={{ display: 'flex', gap: '1rem', flex: '1 1 100%', minWidth: '200px' }}>
             <div style={{ position: 'relative', flex: 1 }}>
               <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
               <input 
@@ -68,12 +68,12 @@ export default function Marketplace() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <button className="btn-secondary" style={{ padding: '0 1rem' }}>
+            <button className="btn-secondary" style={{ padding: '0 1rem', width: 'auto' }}>
               <Filter size={18} /> {t('filters')}
             </button>
           </div>
           
-          <Link to="/marketplace/sell" className="btn-primary">
+          <Link to="/marketplace/sell" className="btn-primary" style={{ flex: '1 1 auto', justifyContent: 'center' }}>
             <Leaf size={18} /> {t('sell_crop')}
           </Link>
           
@@ -86,7 +86,7 @@ export default function Marketplace() {
           <Loader2 size={40} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '2rem' }}>
           {filteredCrops.map(crop => (
             <div key={crop.id} className="glass-card" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               
