@@ -1,0 +1,48 @@
+{
+  "version": "4.2.0-AgriVision",
+  "model_type": "CNN-Vision-Transformer-Hybrid",
+  "training_classes": [
+    "Rice (Oryza sativa)",
+    "Wheat (Triticum aestivum)",
+    "Cotton (Gossypium)",
+    "Sugarcane (Saccharum officinarum)",
+    "Tomato (Solanum lycopersicum)"
+  ],
+  "test_cases": [
+    {
+      "input_type": "Positive (Valid Crop)",
+      "example_filenames": ["wheat_rust.jpg", "rice_field_blast.png", "cotton_leaf.jpeg", "tomato_blight_sample.jpg"],
+      "expected_result": "Valid Diagnosis",
+      "behavior": "Triggers high-confidence disease identification and agronomist treatment plans."
+    },
+    {
+      "input_type": "Negative (Invalid Image)",
+      "example_filenames": ["my_car.jpg", "selfie.png", "office_interior.jpg", "dog_playing.jpeg", "laptop_screen.png"],
+      "expected_result": "Image Not Recognized",
+      "behavior": "Triggers strict rejection filter. Model fails to detect botanical structures."
+    },
+    {
+      "input_type": "Ambiguous/Unknown",
+      "example_filenames": ["unnamed_leaf.jpg", "green_blur.png"],
+      "expected_result": "Probabilistic Diagnosis",
+      "behavior": "Falls back to the most likely agricultural class with lower confidence scores."
+    }
+  ],
+  "agronomist_database": [
+    {
+      "crop": "Rice",
+      "diseases": ["Rice Blast", "Bacterial Leaf Blight"],
+      "verified_treatments": "Tricyclazole, Streptocycline"
+    },
+    {
+      "crop": "Wheat",
+      "diseases": ["Yellow Rust", "Loose Smut"],
+      "verified_treatments": "Propiconazole, Tebuconazole"
+    },
+    {
+      "crop": "Cotton",
+      "diseases": ["Boll Rot", "Leaf Curl Virus"],
+      "verified_treatments": "Copper Oxychloride, Imidacloprid"
+    }
+  ]
+}
