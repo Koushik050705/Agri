@@ -199,16 +199,16 @@ export default function VoiceAssistant() {
     const lower = transcript.toLowerCase();
     
     // 1. Language Switching logic (Highest priority)
-    for (const [langName, code] of Object.entries(LANG_CODE_MAP)) {
-      if (lower.includes(langName.toLowerCase()) || lower.includes(code)) {
-        // Look for "change/switch/language" keywords across all languages
-        const isLangCommand = Object.values(COMMANDS).some(langCmds => 
-          langCmds.language?.some(p => lower.includes(p))
-        ) || lower.includes('switch') || lower.includes('change') || lower.includes('set');
+    // PRO TIP: We check every language's "language" keywords to catch crossover commands
+    const allLanguageKeywords = Object.values(COMMANDS).flatMap(c => c.language || []);
+    const isGenericLangCommand = allLanguageKeywords.some(p => lower.includes(p)) || 
+                                lower.includes('switch') || lower.includes('change') || lower.includes('set');
 
-        if (isLangCommand) {
+    if (isGenericLangCommand) {
+      for (const [langName, code] of Object.entries(LANG_CODE_MAP)) {
+        if (lower.includes(langName.toLowerCase()) || lower.includes(code)) {
           i18n.changeLanguage(code);
-          const fbText = `${t('language')}: ${langName}`;
+          const fbText = `${t('language') || 'Language'}: ${langName}`;
           setFeedback(fbText);
           speak(fbText);
           setTimeout(() => setIsVisible(false), 2000);
