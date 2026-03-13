@@ -124,7 +124,7 @@ export default function Marketplace() {
                 </div>
                 
                 <Link to={`/marketplace/buy/${crop.id}`} className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                  <ShoppingCart size={18} /> {t('contact_buy')}
+                  <ShoppingCart size={18} /> View Details
                 </Link>
               </div>
             </div>

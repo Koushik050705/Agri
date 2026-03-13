@@ -72,13 +72,7 @@ export default function BuyCrop() {
     setPurchasing(true);
     
     try {
-      // 1. Update crop status to 'sold'
-      await supabase
-        .from('crops')
-        .update({ status: 'sold' })
-        .eq('id', crop.id);
-        
-      // 2. Insert notification for the Farmer
+      // 1. Insert notification for the Farmer
       if (crop.farmer_id) {
          await supabase
           .from('notifications')
@@ -119,9 +113,9 @@ export default function BuyCrop() {
       <div className="container" style={{ padding: '4rem 1.5rem', maxWidth: '600px', textAlign: 'center' }}>
         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <CheckCircle size={64} style={{ color: 'var(--color-primary)', marginBottom: '1.5rem' }} />
-          <h2 className="title-glow" style={{ fontSize: '2rem', marginBottom: '1rem' }}>Interest Confirmed!</h2>
+          <h2 className="title-glow" style={{ fontSize: '2rem', marginBottom: '1rem' }}>Farmer Notified!</h2>
           <p className="subtitle" style={{ marginBottom: '2rem' }}>
-            The farmer has been notified and this crop is now marked as unavailable in the marketplace.
+            The farmer has been alerted of your interest. You can now contact them directly using the details below to arrange payment and delivery.
           </p>
           
           <div style={{ backgroundColor: 'var(--color-bg-elevated)', padding: '1.5rem', borderRadius: 'var(--radius-md)', width: '100%', marginBottom: '2rem' }}>
@@ -172,24 +166,27 @@ export default function BuyCrop() {
           <div style={{ flex: '1 1 250px', backgroundColor: 'var(--color-bg-dark)', padding: '2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-bg-elevated)', display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 1.5rem 0', paddingBottom: '1rem', borderBottom: '1px solid var(--color-bg-elevated)' }}>Seller Information</h3>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--color-primary-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-primary)', fontWeight: 600 }}>
                 {crop.users?.name?.[0] || 'F'}
               </div>
               <div>
                 <div style={{ fontWeight: 600 }}>{crop.users?.name}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--color-primary)', fontSize: '1rem', fontWeight: 600, marginTop: '0.25rem' }}>
+                  {crop.users?.mobile}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
                   <MapPin size={14} /> {crop.users?.address}
                 </div>
               </div>
             </div>
             
             <div style={{ marginTop: 'auto', paddingTop: '2rem' }}>
-              <button className="btn-primary" style={{ width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }} onClick={handleInterest} disabled={purchasing || crop.status !== 'available'}>
+              <button className="btn-primary" style={{ width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }} onClick={handleInterest} disabled={purchasing || success}>
                 {purchasing ? <Loader2 size={20} className="animate-spin" /> : (
                   <>
                     <ShoppingBag size={20} />
-                    {crop.status === 'available' ? 'Connect with Farmer' : 'Sold Out'}
+                    {success ? 'Farmer Notified' : 'Notify Farmer of Interest'}
                   </>
                 )}
               </button>
