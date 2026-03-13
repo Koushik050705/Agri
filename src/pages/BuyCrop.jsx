@@ -81,6 +81,15 @@ export default function BuyCrop() {
             message: `Your crop ${crop.crop_name} has a new buyer interest from ${user.phone || 'a user'}. They will contact you shortly.`,
             type: 'purchase'
           }]);
+          
+        // 2. Trigger the real Twilio SMS via Edge Function
+        await supabase.functions.invoke('send-sms', {
+          body: {
+            farmerPhone: crop.users.mobile,
+            buyerPhone: user.phone || 'Unknown Buyer',
+            cropName: crop.crop_name
+          }
+        });
       }
       
       // Simulate network delay for effect
