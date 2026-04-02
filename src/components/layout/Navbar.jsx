@@ -127,10 +127,14 @@ export default function Navbar() {
           ) : (
             /* Desktop Nav */
             <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-              <Link to="/marketplace" style={{ fontWeight: 600, fontSize: '1.05rem' }}>{t('marketplace')}</Link>
-              <Link to="/agritech" style={{ fontWeight: 600, fontSize: '1.05rem' }}>{t('scanner')}</Link>
-              <Link to="/calendar" style={{ fontWeight: 600, fontSize: '1.05rem' }}>🌱 Calendar</Link>
-              <Link to="/services" style={{ fontWeight: 600, fontSize: '1.05rem' }}>{t('services')}</Link>
+              {user && (
+                <>
+                  <Link to="/marketplace" style={{ fontWeight: 600, fontSize: '1.05rem' }}>{t('marketplace')}</Link>
+                  <Link to="/agritech" style={{ fontWeight: 600, fontSize: '1.05rem' }}>{t('scanner')}</Link>
+                  <Link to="/calendar" style={{ fontWeight: 600, fontSize: '1.05rem' }}>🌱 Calendar</Link>
+                  <Link to="/services" style={{ fontWeight: 600, fontSize: '1.05rem' }}>{t('services')}</Link>
+                </>
+              )}
               
               <LangSelector />
               <div style={{ width: '1px', height: '22px', backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
@@ -165,11 +169,16 @@ export default function Navbar() {
           boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
           animation: 'fadeIn 0.2s ease-out'
         }}>
-          <Link to="/marketplace" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{t('marketplace')}</Link>
-          <Link to="/agritech" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{t('scanner')}</Link>
-          <Link to="/calendar" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>🌱 Calendar</Link>
-          <Link to="/services" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{t('services')}</Link>
+          {user && (
+            <>
+              <Link to="/marketplace" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{t('marketplace')}</Link>
+              <Link to="/agritech" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{t('scanner')}</Link>
+              <Link to="/calendar" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>🌱 Calendar</Link>
+              <Link to="/services" style={{ fontWeight: 600, fontSize: '1.2rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{t('services')}</Link>
+            </>
+          )}
           
+
           <div style={{ marginTop: '0.5rem' }}>
             <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>Language</p>
             <LangSelector />
