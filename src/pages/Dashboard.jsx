@@ -14,6 +14,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [recentCrops, setRecentCrops] = useState([]);
+  const [myListings, setMyListings] = useState([]);
+  const [availableLoads, setAvailableLoads] = useState([]);
+  const [myDeliveries, setMyDeliveries] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [newNotif, setNewNotif] = useState(false);
 
@@ -26,11 +29,36 @@ export default function Dashboard() {
         .from('users').select('*').eq('id', user.id).single();
       if (profileData) setProfile(profileData);
 
-      // Fetch recent crops
+      // Fetch recent crops (for buyers) or own crops (for farmers)
       const { data: cropsData } = await supabase
         .from('crops').select('*')
         .order('created_at', { ascending: false }).limit(3);
       if (cropsData) setRecentCrops(cropsData);
+
+      try {
+        const { data: myCropsData, error } = await supabase
+          .from('crops').select('*').eq('farmer_id', user.id).order('created_at', { ascending: false });
+        if (error) throw error;
+        if (myCropsData && myCropsData.length > 0) {
+           setMyListings(myCropsData);
+        } else {
+           throw new Error("Empty DB");
+        }
+      } catch (err) {
+        const localCrops = JSON.parse(localStorage.getItem('agri_local_crops') || '[]');
+        setMyListings(localCrops.filter(c => c.farmer_id === user.id));
+      }
+
+      // Fetch loads for Driver
+      if (profileData?.role === 'driver') {
+        const globalSoldIds = JSON.parse(localStorage.getItem('agri_sold_crops') || '[]');
+        const localAssignments = JSON.parse(localStorage.getItem('agri_driver_assignments') || '{}');
+        
+        // Mocking available loads using recent sold IDs for demo
+        // In real app, fetch `status=sold` where `driver_id=null`
+        setAvailableLoads(globalSoldIds.filter(id => !localAssignments[id]));
+        setMyDeliveries(Object.keys(localAssignments).filter(id => localAssignments[id] === user.id));
+      }
 
       // Fetch notifications
       const { data: notifData } = await supabase
@@ -70,21 +98,24 @@ export default function Dashboard() {
   const displayName = profile?.name || 'Valued Member';
   const role = profile?.role || 'farmer';
 
-  const farmerCards = [
-    { icon: <Leaf size={28} />, label: t('sell_crop'), link: '/marketplace/sell', desc: t('dash_scanner_desc') },
-    { icon: <FlaskConical size={28} />, label: t('dash_soil_test'), link: '/services', desc: t('dash_soil_desc') },
-    { icon: <Landmark size={28} />, label: t('dash_govt'), link: '/services', desc: t('dash_govt_desc') },
-    { icon: <Bot size={28} />, label: t('scanner'), link: '/agritech', desc: t('dash_scanner_desc') },
+  const driverCards = [
+    { icon: <Package size={28} />, label: 'Find Loads', link: '#loads', desc: 'Find crops that need transport' },
+    { icon: <MapPin size={28} />, label: 'Active Routes', link: '#routes', desc: 'Track your current deliveries' },
   ];
 
-  const buyerCards = [
-    { icon: <ShoppingBag size={28} />, label: t('marketplace'), link: '/marketplace', desc: t('dash_market_desc') },
-    { icon: <TrendingUp size={28} />, label: t('dash_trends'), link: '/marketplace', desc: t('dash_trends_desc') },
-    { icon: <CloudRain size={28} />, label: 'Weather', link: '/agritech', desc: t('dash_weather_desc') },
-    { icon: <Bot size={28} />, label: t('dash_bot'), link: '/#chatbot', desc: t('dash_bot_desc') },
-  ];
+  const quickLinks = role === 'farmer' ? farmerCards : role === 'driver' ? driverCards : buyerCards;
 
-  const quickLinks = role === 'farmer' ? farmerCards : buyerCards;
+  const handleAcceptLoad = (cropId) => {
+    if (!window.confirm("Accept this load for delivery?")) return;
+    const assignments = JSON.parse(localStorage.getItem('agri_driver_assignments') || '{}');
+    assignments[cropId] = user.id;
+    localStorage.setItem('agri_driver_assignments', JSON.stringify(assignments));
+    
+    // Update local state
+    setAvailableLoads(availableLoads.filter(id => id !== cropId));
+    setMyDeliveries([...myDeliveries, cropId]);
+    alert("Load accepted! You are now assigned to this transport.");
+  };
 
   return (
     <div style={{ minHeight: 'calc(100vh - var(--nav-height))', padding: '2rem 1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
@@ -101,8 +132,8 @@ export default function Dashboard() {
             WebkitTextFillColor: 'transparent',
             textShadow: '0 10px 30px rgba(74, 222, 128, 0.3)'
           }}>{displayName}</h1>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--color-primary-dim)', color: 'var(--color-primary)', padding: '0.35rem 1rem', borderRadius: 'var(--radius-pill)', fontSize: '0.85rem', fontWeight: 700, marginTop: '0.75rem', border: '1px solid rgba(74, 222, 128, 0.2)' }}>
-            <ShieldCheck size={16} /> {role === 'farmer' ? t('farmer') : t('buyer')}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--color-primary-dim)', color: 'var(--color-primary)', padding: '0.35rem 1rem', borderRadius: 'var(--radius-pill)', fontSize: '0.85rem', fontWeight: 700, marginTop: '0.75rem', border: '1px solid rgba(74, 222, 128, 0.2)', textTransform: 'capitalize' }}>
+            <ShieldCheck size={16} /> {role}
           </span>
         </div>
         <button onClick={async () => { await signOut(); navigate('/'); }} className="btn-secondary" style={{ display: 'flex', gap: '0.5rem' }}>
@@ -133,26 +164,101 @@ export default function Dashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
 
-        {/* Recent Crops (marketplace preview) */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={20} style={{ color: 'var(--color-primary)' }} /> {t('dash_recent_listings')}</h2>
-            <Link to="/marketplace" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem' }}>
-              {t('view_all')} <ArrowRight size={16} />
-            </Link>
+        {/* Main Panel Content via Role */}
+        {role === 'driver' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <div className="glass-card" id="loads">
+              <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Package size={20} style={{ color: 'var(--color-primary)' }} /> Available Loads (Pending Transport)
+              </h2>
+              {availableLoads.length > 0 ? availableLoads.map(id => (
+                <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', marginBottom: '0.75rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-bg-elevated)', borderLeft: '3px solid var(--color-warning)' }}>
+                  <div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text-main)' }}>Crop Delivery #{id.substring(0,6)}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>Requires immediate transport</div>
+                  </div>
+                  <button onClick={() => handleAcceptLoad(id)} className="btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}>
+                    Accept Load
+                  </button>
+                </div>
+              )) : (
+                <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem 0' }}>No pending loads to transport.</p>
+              )}
+            </div>
+
+            <div className="glass-card" id="routes">
+              <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MapPin size={20} style={{ color: 'var(--color-primary)' }} /> My Active Deliveries
+              </h2>
+              {myDeliveries.length > 0 ? myDeliveries.map(id => (
+                <div key={id} style={{ padding: '1rem', marginBottom: '0.75rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-bg-elevated)', borderLeft: '3px solid var(--color-primary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--color-text-main)' }}>Crop Delivery #{id.substring(0,6)}</span>
+                    <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '12px', backgroundColor: 'rgba(0,200,83,0.1)', color: 'var(--color-primary)' }}>In Transit</span>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Status: En Route to Buyer</div>
+                  <Link to={`/marketplace/buy/${id}`} style={{ display: 'block', marginTop: '0.75rem', color: 'var(--color-primary)', fontSize: '0.85rem', textDecoration: 'none' }}>
+                    View Route Details →
+                  </Link>
+                </div>
+              )) : (
+                <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem 0' }}>No active deliveries.</p>
+              )}
+            </div>
           </div>
-          {recentCrops.length > 0 ? recentCrops.map(c => (
-            <Link key={c.id} to={`/marketplace/buy/${c.id}`} style={{ textDecoration: 'none', display: 'block', padding: '0.75rem', marginBottom: '0.5rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-bg-elevated)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600 }}>{c.crop_name}</span>
-                <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>₹{c.price}/kg</span>
-              </div>
-              <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{c.quantity} kg available</div>
-            </Link>
-          )) : (
-            <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem 0' }}>No listings yet. <Link to="/marketplace/sell">Be the first to sell!</Link></p>
-          )}
-        </div>
+        )}
+
+        {role === 'buyer' && (
+          <div className="glass-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={20} style={{ color: 'var(--color-primary)' }} /> {t('dash_recent_listings')}</h2>
+              <Link to="/marketplace" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem' }}>
+                {t('view_all')} <ArrowRight size={16} />
+              </Link>
+            </div>
+            {recentCrops.length > 0 ? recentCrops.map(c => (
+              <Link key={c.id} to={`/marketplace/buy/${c.id}`} style={{ textDecoration: 'none', display: 'block', padding: '0.75rem', marginBottom: '0.5rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-bg-elevated)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--color-text-main)' }}>{c.crop_name}</span>
+                  <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>₹{c.price}/kg</span>
+                </div>
+                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', marginTop: '0.25rem' }}>{c.quantity} available</div>
+              </Link>
+            )) : (
+              <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem 0' }}>No listings available.</p>
+            )}
+          </div>
+        )}
+
+        {role === 'farmer' && (
+          <div className="glass-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={20} style={{ color: 'var(--color-primary)' }} /> My Active Listings</h2>
+              <Link to="/marketplace/sell" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem' }}>
+                Add New <ArrowRight size={16} />
+              </Link>
+            </div>
+            {myListings.length > 0 ? myListings.map(c => (
+              <Link key={c.id} to={`/marketplace/buy/${c.id}`} style={{ textDecoration: 'none', display: 'block', padding: '1rem', marginBottom: '0.75rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-bg-elevated)', borderLeft: c.status === 'sold' ? '3px solid var(--color-danger)' : '3px solid var(--color-primary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--color-text-main)' }}>{c.crop_name}</span>
+                  <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '12px', backgroundColor: c.status === 'sold' ? 'rgba(239,68,68,0.2)' : 'rgba(0,200,83,0.1)', color: c.status === 'sold' ? 'var(--color-danger)' : 'var(--color-primary)' }}>
+                    {c.status === 'sold' ? 'Sold' : 'Active'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                  <span>{c.quantity}</span>
+                  <span style={{ fontWeight: 600 }}>₹{c.price}/kg</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-primary)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  Click to view bids <ArrowRight size={12} />
+                </div>
+              </Link>
+            )) : (
+              <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem 0' }}>You haven't listed any crops yet. <Link to="/marketplace/sell">Start selling.</Link></p>
+            )}
+          </div>
+        )}
 
         {/* Notifications Panel */}
         <div className="glass-card">

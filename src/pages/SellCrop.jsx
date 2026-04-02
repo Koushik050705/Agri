@@ -42,7 +42,17 @@ export default function SellCrop() {
       navigate('/marketplace');
     } catch (err) {
       console.error('Upload error:', err);
-      // For demo purposes, we'll pretend it worked if Supabase isn't fully set up
+      // For demo purposes, fallback to local storage
+      const newCrop = { 
+        id: 'mock-' + Date.now(), 
+        farmer_id: user.id, 
+        ...formData, 
+        status: 'available', 
+        users: { name: user?.user_metadata?.name || user.email?.split('@')[0] || 'Local Farmer' } 
+      };
+      const localCrops = JSON.parse(localStorage.getItem('agri_local_crops') || '[]');
+      localStorage.setItem('agri_local_crops', JSON.stringify([newCrop, ...localCrops]));
+
       setTimeout(() => {
         navigate('/marketplace');
       }, 1000);

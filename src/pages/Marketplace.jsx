@@ -11,15 +11,21 @@ export default function Marketplace() {
   const [crops, setCrops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [userRole, setUserRole] = useState(null);
 
-  // Fallback mock data if Supabase isn't seeded yet
-  const mockCrops = [
-    { id: '1', crop_name: 'Organic Tomatoes', price: 45, quantity: '500 kg', description: 'Fresh, pesticide-free tomatoes ready for transit.', status: 'available', users: { name: 'Ramesh Singh', address: 'Punjab, India' } },
-    { id: '2', crop_name: 'Premium Basmati Rice', price: 120, quantity: '2000 kg', description: 'Aged basmati rice, excellent aroma.', status: 'available', users: { name: 'Kartik V.', address: 'Haryana, India' } },
-    { id: '3', crop_name: 'Kashmiri Apples', price: 150, quantity: '300 kg', description: 'Freshly harvested apples from the valley.', status: 'available', users: { name: 'Abdul Rasheed', address: 'Srinagar, J&K' } }
-  ];
+  // Removed pre-populated mock data per request
+  const mockCrops = [];
 
   useEffect(() => {
+    const fetchRole = async () => {
+      if (!user) return;
+      try {
+        const { data } = await supabase.from('users').select('role').eq('id', user.id).single();
+        if (data) setUserRole(data.role);
+      } catch (e) { }
+    };
+    fetchRole();
+
     const fetchCrops = async () => {
       try {
         const { data, error } = await supabase
@@ -29,17 +35,22 @@ export default function Marketplace() {
           
         if (error) throw error;
         
-        setCrops(data && data.length > 0 ? data : mockCrops);
+        const globalSold = JSON.parse(localStorage.getItem('agri_sold_crops') || '[]');
+        const localCrops = JSON.parse(localStorage.getItem('agri_local_crops') || '[]');
+        const activeCrops = (data && data.length > 0 ? data : [...localCrops, ...mockCrops]).filter(c => !globalSold.includes(c.id));
+        setCrops(activeCrops);
       } catch (err) {
         console.error('Error fetching crops:', err);
-        setCrops(mockCrops); // Fallback on error
+        const globalSold = JSON.parse(localStorage.getItem('agri_sold_crops') || '[]');
+        const localCrops = JSON.parse(localStorage.getItem('agri_local_crops') || '[]');
+        setCrops([...localCrops, ...mockCrops].filter(c => !globalSold.includes(c.id))); // Fallback on error
       } finally {
         setLoading(false);
       }
     };
 
     fetchCrops();
-  }, []);
+  }, [user]);
 
   const filteredCrops = crops.filter(c => c.crop_name.toLowerCase().includes(search.toLowerCase()));
 
@@ -73,9 +84,11 @@ export default function Marketplace() {
             </button>
           </div>
           
-          <Link to="/marketplace/sell" className="btn-primary" style={{ flex: '1 1 auto', justifyContent: 'center' }}>
-            <Leaf size={18} /> {t('sell_crop')}
-          </Link>
+          {userRole === 'farmer' && (
+            <Link to="/marketplace/sell" className="btn-primary" style={{ flex: '1 1 auto', justifyContent: 'center' }}>
+              <Leaf size={18} /> {t('sell_crop')}
+            </Link>
+          )}
           
         </div>
       </div>

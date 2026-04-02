@@ -80,16 +80,21 @@ export default function Signup() {
           
           <div className="mb-4">
             <label className="input-label">{t('label_account_type')}</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
               <button type="button" onClick={() => setFormData({...formData, role: 'farmer'})} 
                 className={formData.role === 'farmer' ? 'btn-primary' : 'btn-secondary'}
-                style={{ justifyContent: 'center', padding: '0.5rem' }}>
+                style={{ justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}>
                 {t('farmer')}
               </button>
               <button type="button" onClick={() => setFormData({...formData, role: 'buyer'})} 
                 className={formData.role === 'buyer' ? 'btn-primary' : 'btn-secondary'}
-                style={{ justifyContent: 'center', padding: '0.5rem' }}>
+                style={{ justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}>
                 {t('buyer')}
+              </button>
+              <button type="button" onClick={() => setFormData({...formData, role: 'driver'})} 
+                className={formData.role === 'driver' ? 'btn-primary' : 'btn-secondary'}
+                style={{ justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}>
+                Driver
               </button>
             </div>
           </div>

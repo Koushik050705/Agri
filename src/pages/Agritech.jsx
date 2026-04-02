@@ -5,6 +5,7 @@ import * as tf from '@tensorflow/tfjs';
 import * as mobilenet from '@tensorflow-models/mobilenet';
 import { diseaseDiagnostics } from '../data/diseaseDiagnostics';
 import { soilDiagnostics } from '../data/soilDiagnostics';
+import { supabase } from '../lib/supabase';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ImageNet classes that indicate a valid agricultural subject (plant / soil)
@@ -199,9 +200,7 @@ export default function Agritech() {
         const diagnostic = diseaseDiagnostics[className] || {};
         const validationLabel = predictions[0].className;
 
-        setScanState('valid');
-        setScanResult({
-          isValid:           true,
+        const resultData = {
           crop:              diagnostic.crop     || className.split('___')[0],
           disease:           diagnostic.disease  || 'Unknown Condition',
           recommendation:    diagnostic.recommendation || 'Consult an agronomist.',
@@ -209,7 +208,20 @@ export default function Agritech() {
           confidence:        (maxProb * 100).toFixed(1) + '%',
           validationClass:   validationLabel,
           validationScore:   (predictions[0].probability * 100).toFixed(1)
-        });
+        };
+        
+        setScanState('valid');
+        setScanResult({ isValid: true, ...resultData });
+        
+        // Log to database asynchronously  
+        supabase.from('scan_history').insert([{
+            scan_type: 'crop',
+            subject: resultData.crop,
+            disease_issue: resultData.disease,
+            confidence: parseFloat(maxProb * 100),
+            validation_label: validationLabel,
+            created_at: new Date().toISOString()
+        }]).then(({ error }) => { if (error) console.error('[Supabase] Insert error:', error); });
       } else {
         // Soil analysis using trained sequential model
         // Extract dominant colour features from the image
@@ -249,9 +261,7 @@ export default function Agritech() {
         const soilKey    = Object.keys(soilDiagnostics)[maxSoilIdx];
         const diagnostic = soilDiagnostics[soilKey];
 
-        setScanState('valid');
-        setScanResult({
-          isValid:          true,
+        const resultData = {
           crop:             diagnostic.type,
           disease:          diagnostic.issue,
           recommendation:   diagnostic.recommendation,
@@ -260,7 +270,20 @@ export default function Agritech() {
           confidence:       (maxSoilProb * 100).toFixed(1) + '%',
           validationClass:  predictions[0].className,
           validationScore:  (predictions[0].probability * 100).toFixed(1)
-        });
+        };
+        
+        setScanState('valid');
+        setScanResult({ isValid: true, ...resultData });
+
+        // Log to database asynchronously
+        supabase.from('scan_history').insert([{
+            scan_type: 'soil',
+            subject: resultData.crop,
+            disease_issue: resultData.disease,
+            confidence: parseFloat(maxSoilProb * 100),
+            validation_label: predictions[0].className,
+            created_at: new Date().toISOString()
+        }]).then(({ error }) => { if (error) console.error('[Supabase] Insert error:', error); });
       }
 
       imgTensor.dispose(); resized.dispose(); normalised.dispose();
