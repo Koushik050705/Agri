@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Loader2, ArrowLeft, ShieldCheck, MapPin, ShoppingBag, CheckCircle, Tag, TrendingUp, Gavel, Clock } from 'lucide-react';
+import { sendSMS } from '../lib/sms';
 
 export default function BuyCrop() {
   const { id } = useParams();
@@ -103,14 +104,22 @@ export default function BuyCrop() {
       setBidPrice('');
       setBidQuantity('');
       
-      // Notify Farmer
+      // Notify Farmer in-app
       if (crop.farmer_id) {
-         await supabase.from('notifications').insert([{
-            user_id: crop.farmer_id,
-            message: `New public bid of ₹${bidPrice}/kg on your crop ${crop.crop_name}.`,
-            type: 'bid'
-         }]);
+        await supabase.from('notifications').insert([{
+          user_id: crop.farmer_id,
+          message: `New bid of ₹${bidPrice}/kg on your crop ${crop.crop_name}.`,
+          type: 'bid'
+        }]);
       }
+      
+      // SMS Farmer
+      const farmerMobile = crop.users?.mobile;
+      const buyerName = user?.user_metadata?.name || user.email?.split('@')[0] || 'A buyer';
+      await sendSMS(
+        farmerMobile,
+        `AgriVision: ${buyerName} has placed a bid of Rs.${bidPrice}/kg on your crop "${crop.crop_name}". Log in to review and accept.`
+      );
     } catch(err) {
       console.error(err);
     } finally {
@@ -132,9 +141,23 @@ export default function BuyCrop() {
       } catch(e) {
         // Fallback local storage
         localStorage.setItem(`agri_bids_${id}`, JSON.stringify(updatedBids));
-        // Mocking sold status for grid tests
         const globalSold = JSON.parse(localStorage.getItem('agri_sold_crops') || '[]');
         localStorage.setItem('agri_sold_crops', JSON.stringify([...globalSold, id]));
+      }
+      
+      // SMS the winning Buyer
+      const winningBid = bids.find(b => b.id === bidId);
+      if (winningBid?.buyer_id) {
+        const { data: buyerProfile } = await supabase
+          .from('users').select('mobile, name').eq('id', winningBid.buyer_id).single();
+        if (buyerProfile?.mobile) {
+          const farmerName = crop.users?.name || 'The farmer';
+          const farmerMobile = crop.users?.mobile || '';
+          await sendSMS(
+            buyerProfile.mobile,
+            `AgriVision: Congratulations! ${farmerName} has accepted your bid of Rs.${winningBid.price_offered}/kg for "${crop.crop_name}". Contact: ${farmerMobile}`
+          );
+        }
       }
       
       alert("Offer Accepted! Your crop is now marked as sold and hidden from the public marketplace grid.");
