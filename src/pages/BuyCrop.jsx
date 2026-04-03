@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Loader2, ArrowLeft, ShieldCheck, MapPin, ShoppingBag, CheckCircle, Tag, TrendingUp, Gavel, Truck, Clock } from 'lucide-react';
+import { Loader2, ArrowLeft, ShieldCheck, MapPin, ShoppingBag, CheckCircle, Tag, TrendingUp, Gavel, Clock } from 'lucide-react';
 
 export default function BuyCrop() {
   const { id } = useParams();
@@ -20,9 +20,6 @@ export default function BuyCrop() {
   const hasWon = bids.some(b => b.buyer_id === user?.id && b.status === 'accepted');
   const cropSoldOut = crop?.status === 'sold';
   
-  const localAssignments = JSON.parse(localStorage.getItem('agri_driver_assignments') || '{}');
-  const assignedDriverId = localAssignments[id] || crop?.driver_id;
-
   // Request notification permission on component mount
 
 
@@ -219,79 +216,17 @@ export default function BuyCrop() {
       </div>
 
       {/* Conditional Rendering: Public Board OR Logistics Tracker */}
+      {/* Conditional Rendering: Public Board OR Simple Sold Message */}
       {cropSoldOut && (isOwner || hasWon) ? (
         <div className="glass-card" style={{ marginTop: '2rem' }}>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Truck size={24} style={{ color: 'var(--color-primary)' }} /> Transport & Logistics Tracker
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-primary)' }}>
+            <CheckCircle size={24} /> Item Sold
           </h2>
-          
           <div style={{ padding: '1.5rem', backgroundColor: 'var(--color-bg-dark)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-bg-elevated)' }}>
-            
-            {/* Logistics Summary */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '2rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Order Confirmed & Payment Verified</h3>
-              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-                Transport Fee (Paid by Buyer): <strong>₹850.00</strong> <br/>
-                Status: {assignedDriverId ? <span style={{ color: 'var(--color-primary)' }}>Vehicle Assigned</span> : <span style={{ color: 'var(--color-warning)' }}>Awaiting Driver Assignment</span>}
-              </p>
-            </div>
-
-            {/* Visual Stepper */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', margin: '0 1rem 2rem 1rem' }}>
-              {/* Connecting Line */}
-              <div style={{ position: 'absolute', top: '15px', left: '0', right: '0', height: '4px', backgroundColor: 'var(--color-bg-elevated)', zIndex: 0 }}>
-                <div style={{ height: '100%', backgroundColor: 'var(--color-primary)', width: assignedDriverId ? '50%' : '15%', transition: 'width 1s ease' }}></div>
-              </div>
-
-              {/* Step 1: Accepted */}
-              <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '50%', backgroundColor: 'var(--color-primary)', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <CheckCircle size={18} />
-                </div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Offer Accepted</div>
-              </div>
-
-              {/* Step 2: Vehicle */}
-              <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '50%', backgroundColor: assignedDriverId ? 'var(--color-primary)' : 'var(--color-bg-elevated)', border: assignedDriverId ? 'none' : '2px solid var(--color-primary)', color: assignedDriverId ? '#000' : 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {assignedDriverId ? <CheckCircle size={18} /> : <Clock size={16} />}
-                </div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: assignedDriverId ? 'var(--color-text-main)' : 'var(--color-text-muted)' }}>Vehicle Assigned</div>
-              </div>
-
-              {/* Step 3: Transit */}
-              <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '50%', backgroundColor: 'var(--color-bg-elevated)', border: '2px dashed var(--color-text-muted)', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Truck size={16} />
-                </div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>In Transit</div>
-              </div>
-
-              {/* Step 4: Delivered */}
-              <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '50%', backgroundColor: 'var(--color-bg-elevated)', border: '2px solid var(--color-text-muted)', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <MapPin size={16} />
-                </div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>Delivered</div>
-              </div>
-            </div>
-
-            {/* Driver Details Card */}
-            {assignedDriverId ? (
-               <div style={{ padding: '1rem', backgroundColor: 'var(--color-bg-elevated)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--color-primary)' }}>
-                 <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, fontSize: '0.95rem' }}>Transport Details</p>
-                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)', gap: '1rem', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-                   <div>Driver: <span style={{ color: 'var(--color-text-main)' }}>AgriVision Fleet ({assignedDriverId.substring(0,4)})</span></div>
-                   <div>Vehicle: <span style={{ color: 'var(--color-text-main)' }}>Tata Ace (HR 26)</span></div>
-                   <div>Phone: <span style={{ color: 'var(--color-primary)' }}>+91 99999 88888</span></div>
-                 </div>
-               </div>
-            ) : (
-               <div style={{ padding: '1rem', backgroundColor: 'var(--color-bg-elevated)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--color-warning)' }}>
-                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Our platform is automatically finding the nearest logistics partner. You will be notified the moment a driver accepts the load.</p>
-               </div>
-            )}
-
+            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Order Confirmed & Payment Verified</h3>
+            <p style={{ margin: '0.5rem 0 0 0', color: 'var(--color-text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+              The transaction has been successfully completed. Connect with the counterparty to arrange the transfer.
+            </p>
           </div>
         </div>
       ) : !cropSoldOut ? (

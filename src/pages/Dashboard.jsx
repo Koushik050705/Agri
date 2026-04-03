@@ -15,8 +15,6 @@ export default function Dashboard() {
   const [profile, setProfile] = useState(null);
   const [recentCrops, setRecentCrops] = useState([]);
   const [myListings, setMyListings] = useState([]);
-  const [availableLoads, setAvailableLoads] = useState([]);
-  const [myDeliveries, setMyDeliveries] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [newNotif, setNewNotif] = useState(false);
 
@@ -47,17 +45,6 @@ export default function Dashboard() {
       } catch (err) {
         const localCrops = JSON.parse(localStorage.getItem('agri_local_crops') || '[]');
         setMyListings(localCrops.filter(c => c.farmer_id === user.id));
-      }
-
-      // Fetch loads for Driver
-      if (profileData?.role === 'driver') {
-        const globalSoldIds = JSON.parse(localStorage.getItem('agri_sold_crops') || '[]');
-        const localAssignments = JSON.parse(localStorage.getItem('agri_driver_assignments') || '{}');
-        
-        // Mocking available loads using recent sold IDs for demo
-        // In real app, fetch `status=sold` where `driver_id=null`
-        setAvailableLoads(globalSoldIds.filter(id => !localAssignments[id]));
-        setMyDeliveries(Object.keys(localAssignments).filter(id => localAssignments[id] === user.id));
       }
 
       // Fetch notifications
@@ -97,25 +84,7 @@ export default function Dashboard() {
 
   const displayName = profile?.name || 'Valued Member';
   const role = profile?.role || 'farmer';
-
-  const driverCards = [
-    { icon: <Package size={28} />, label: 'Find Loads', link: '#loads', desc: 'Find crops that need transport' },
-    { icon: <MapPin size={28} />, label: 'Active Routes', link: '#routes', desc: 'Track your current deliveries' },
-  ];
-
-  const quickLinks = role === 'farmer' ? farmerCards : role === 'driver' ? driverCards : buyerCards;
-
-  const handleAcceptLoad = (cropId) => {
-    if (!window.confirm("Accept this load for delivery?")) return;
-    const assignments = JSON.parse(localStorage.getItem('agri_driver_assignments') || '{}');
-    assignments[cropId] = user.id;
-    localStorage.setItem('agri_driver_assignments', JSON.stringify(assignments));
-    
-    // Update local state
-    setAvailableLoads(availableLoads.filter(id => id !== cropId));
-    setMyDeliveries([...myDeliveries, cropId]);
-    alert("Load accepted! You are now assigned to this transport.");
-  };
+  const quickLinks = role === 'farmer' ? farmerCards : buyerCards;
 
   return (
     <div style={{ minHeight: 'calc(100vh - var(--nav-height))', padding: '2rem 1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
@@ -165,105 +134,6 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
 
         {/* Main Panel Content via Role */}
-        {role === 'driver' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            
-            {/* Earnings Summary */}
-            <div className="glass-card" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'center', backgroundColor: 'var(--color-bg-dark)', border: '1px solid var(--color-primary-dim)' }}>
-              <div style={{ flex: 1, minWidth: '150px' }}>
-                <p style={{ margin: '0 0 0.5rem 0', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>This Week's Earnings</p>
-                <h3 style={{ margin: 0, fontSize: '2rem', color: 'var(--color-primary)' }}>₹4,250</h3>
-              </div>
-              <div style={{ flex: 1, minWidth: '150px' }}>
-                <p style={{ margin: '0 0 0.5rem 0', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Completed Trips</p>
-                <h3 style={{ margin: 0, fontSize: '2rem', color: 'var(--color-text-main)' }}>5</h3>
-              </div>
-              <div style={{ flex: 1, minWidth: '150px' }}>
-                <p style={{ margin: '0 0 0.5rem 0', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Driver Rating</p>
-                <h3 style={{ margin: 0, fontSize: '2rem', color: '#fbbf24' }}>4.9 ★</h3>
-              </div>
-            </div>
-
-            {/* Available Loads */}
-            <div className="glass-card" id="loads">
-              <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Package size={20} style={{ color: 'var(--color-primary)' }} /> Available Loads (Pending Transport)
-              </h2>
-              {availableLoads.length > 0 ? availableLoads.map(id => (
-                <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', padding: '1.25rem', marginBottom: '0.75rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-bg-elevated)', borderLeft: '3px solid var(--color-warning)' }}>
-                  <div>
-                    <div style={{ fontWeight: 600, color: 'var(--color-text-main)', fontSize: '1.1rem' }}>Crop Delivery #{id.substring(0,6)}</div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: '0.4rem', display: 'flex', gap: '1rem' }}>
-                      <span>Estimated Distance: <strong>140 km</strong></span>
-                      <span>Transport Payout: <strong style={{ color: 'var(--color-primary)' }}>₹850</strong></span>
-                    </div>
-                  </div>
-                  <button onClick={() => handleAcceptLoad(id)} className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.9rem' }}>
-                    Accept Load
-                  </button>
-                </div>
-              )) : (
-                <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem 0', backgroundColor: 'var(--color-bg-dark)', borderRadius: 'var(--radius-sm)' }}>No pending loads to transport right now. Check back later.</p>
-              )}
-            </div>
-
-            {/* Active Deliveries */}
-            <div className="glass-card" id="routes">
-              <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <MapPin size={20} style={{ color: 'var(--color-primary)' }} /> My Active Deliveries
-              </h2>
-              {myDeliveries.length > 0 ? myDeliveries.map(id => (
-                <div key={id} style={{ padding: '1.25rem', marginBottom: '0.75rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-bg-elevated)', borderLeft: '3px solid var(--color-primary)' }}>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <span style={{ fontWeight: 600, color: 'var(--color-text-main)', fontSize: '1.1rem' }}>Crop Delivery #{id.substring(0,6)}</span>
-                    <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '12px', backgroundColor: 'rgba(0,200,83,0.1)', color: 'var(--color-primary)', fontWeight: 600 }}>In Transit</span>
-                  </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Current Status</div>
-                      <div style={{ fontSize: '0.9rem', color: 'var(--color-text-main)' }}>En Route to Buyer</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Estimated Arrival</div>
-                      <div style={{ fontSize: '0.9rem', color: 'var(--color-text-main)' }}>Today, 4:30 PM</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Navigation</div>
-                      <Link to={`/marketplace/buy/${id}`} style={{ color: 'var(--color-primary)', fontSize: '0.85rem', textDecoration: 'none', fontWeight: 500 }}>
-                        View Route Map →
-                      </Link>
-                    </div>
-                  </div>
-
-                  {/* Completion Action */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                    <button onClick={() => {
-                        alert("Proof of Delivery required! (Camera integration placeholder)");
-                        if(window.confirm("Mark this delivery as officially COMPLETED?")) {
-                          // Mocking completion
-                          const assignments = JSON.parse(localStorage.getItem('agri_driver_assignments') || '{}');
-                          delete assignments[id];
-                          localStorage.setItem('agri_driver_assignments', JSON.stringify(assignments));
-                          setMyDeliveries(myDeliveries.filter(mId => mId !== id));
-                          alert("Delivery marked as complete! Payout of ₹850 added to your earnings.");
-                        }
-                      }} 
-                      className="btn-secondary" style={{ padding: '0.5rem 1.25rem', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
-                    >
-                      <ShieldCheck size={16} /> Complete Drop-off
-                    </button>
-                  </div>
-
-                </div>
-              )) : (
-                <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '2rem 0', backgroundColor: 'var(--color-bg-dark)', borderRadius: 'var(--radius-sm)' }}>No active deliveries. Go find some loads!</p>
-              )}
-            </div>
-          </div>
-        )}
-
         {role === 'buyer' && (
           <div className="glass-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
