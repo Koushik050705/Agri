@@ -178,39 +178,28 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 /* ─── Crystal Glass Card ─── */
 .glass-card {
   background:
-    linear-gradient(135deg, rgba(255,255,255,0.07) 0%, transparent 50%),
-    linear-gradient(180deg, rgba(8,14,10,0.92) 0%, rgba(5,10,7,0.96) 100%);
+    linear-gradient(160deg, rgba(255,255,255,0.055) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(10,18,13,0.93) 0%, rgba(5,9,6,0.97) 100%);
   border: 1px solid rgba(0, 230, 118, 0.16);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: var(--radius-lg);
   padding: 2rem;
   box-shadow:
     0 24px 64px rgba(0,0,0,0.75),
-    0 2px 0 rgba(255,255,255,0.05) inset,
-    0 -1px 0 rgba(0,0,0,0.6) inset;
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    inset 0 -1px 0 rgba(0,0,0,0.5);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
   transition: all var(--transition-normal);
-  position: relative;
-  overflow: hidden;
-}
-/* Specular gloss sheen */
-.glass-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 40%;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.06) 0%, transparent 100%);
-  pointer-events: none;
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 .glass-card:hover {
   transform: translateY(-5px);
   border-color: rgba(0, 230, 118, 0.35);
+  border-top-color: rgba(255,255,255,0.18);
   box-shadow:
     0 32px 80px rgba(0,0,0,0.85),
     0 0 40px rgba(0,230,118,0.10),
-    0 2px 0 rgba(255,255,255,0.08) inset;
+    inset 0 1px 0 rgba(255,255,255,0.09);
 }
 
 /* ─── Nav Portal ─── */
