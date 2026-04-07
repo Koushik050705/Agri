@@ -2,21 +2,21 @@
 
 :root {
   /* Premium Black-to-Green Gradient System */
-  --bg-black: #070908;
-  --bg-dark-green: #0a1f14;
-  --color-primary: #00c853;       /* Vibrant Green */
+  --bg-black: #030403;
+  --bg-dark-green: #050f09;
+  --color-primary: #00c853;
   --color-primary-dim: rgba(0, 200, 83, 0.12);
   --color-primary-glow: rgba(0, 200, 83, 0.35);
   --color-primary-dark: #00a844;
   
   --gradient-bg: linear-gradient(135deg, var(--bg-black) 0%, var(--bg-dark-green) 100%);
   --gradient-primary: linear-gradient(135deg, #00c853 0%, #00e676 100%);
-  --gradient-dark: linear-gradient(135deg, #000000 0%, #0a1f14 100%);
+  --gradient-dark: linear-gradient(160deg, #000000 0%, #030a05 50%, #050f09 100%);
 
-  --color-bg-dark: var(--bg-black);
-  --color-bg-card: rgba(15, 20, 18, 0.9);
-  --color-bg-card-hover: rgba(22, 29, 26, 0.95);
-  --color-bg-elevated: #1a231f;
+  --color-bg-dark: #010201;
+  --color-bg-card: rgba(5, 8, 6, 0.95);
+  --color-bg-card-hover: rgba(9, 14, 11, 0.98);
+  --color-bg-elevated: #0d1510;
   
   --color-accent: #00e676;
   --color-accent-dim: rgba(0, 230, 118, 0.1);
@@ -66,12 +66,12 @@ body {
   -webkit-font-smoothing: antialiased;
   font-size: 1.05rem;
   
-  /* Atmospheric Farming Background */
+  /* Deep Black Gradient Background */
   background: linear-gradient(
       to bottom,
-      rgba(7, 9, 8, 0.9) 0%,
-      rgba(7, 9, 8, 0.4) 50%,
-      rgba(7, 9, 8, 0.9) 100%
+      rgba(0, 1, 0, 0.96) 0%,
+      rgba(2, 4, 2, 0.55) 50%,
+      rgba(0, 1, 0, 0.96) 100%
     ),
     url('./assets/farm-bg.png');
   background-size: cover;
@@ -164,20 +164,20 @@ button {
 }
 
 .glass-card {
-  background: linear-gradient(135deg, rgba(7, 9, 8, 0.9) 0%, rgba(10, 31, 20, 0.8) 100%);
+  background: linear-gradient(145deg, rgba(3, 6, 4, 0.96) 0%, rgba(6, 14, 9, 0.85) 100%);
   border: 1px solid rgba(0, 200, 83, 0.15);
   border-radius: var(--radius-lg);
   padding: 2rem;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 200, 83, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   transition: all var(--transition-normal);
 }
 
 .glass-card:hover {
   transform: translateY(-6px);
   border-color: var(--color-primary);
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 200, 83, 0.15);
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.95), 0 0 30px rgba(0, 200, 83, 0.15);
 }
 
 /* Nav Portal Hub Styles */
