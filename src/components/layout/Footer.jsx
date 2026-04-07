@@ -33,10 +33,13 @@ export default function Footer() {
 
           <div>
             <h4 style={{ color: 'var(--color-text-main)', marginBottom: '1rem', fontWeight: 600 }}>Connect</h4>
-            <div className="flex gap-2">
-              <a href="#" className="btn-secondary" style={{ padding: '0.5rem', borderRadius: '50%' }}><Twitter size={18} /></a>
-              <a href="#" className="btn-secondary" style={{ padding: '0.5rem', borderRadius: '50%' }}><Github size={18} /></a>
-              <a href="#" className="btn-secondary" style={{ padding: '0.5rem', borderRadius: '50%' }}><Mail size={18} /></a>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <a href="tel:+918688607489" style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                📞 +91 86886 07489
+              </a>
+              <a href="mailto:adamakoushikreddy@gmail.com" style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                ✉️ adamakoushikreddy@gmail.com
+              </a>
             </div>
           </div>
           
